@@ -104,6 +104,21 @@ function getFiscalYearWeeks() {
     return $weekOptions;
 }
 
+function getFiscalYearBoundaries() {
+    $today = new DateTime("now", new DateTimeZone("UTC"));
+    $currentYear = (int)$today->format("Y");
+
+    $fiscalYearStart = new DateTime("Sept 1 " . ($today->format('m') >= 9 ? $currentYear : $currentYear - 1));
+    $fiscalYearEnd = clone $fiscalYearStart;
+    $fiscalYearEnd->modify("+1 year -1 day");
+
+    return [
+        'start' => $fiscalYearStart,
+        'end'   => $fiscalYearEnd,
+        'label' => "Financial Year " . $fiscalYearStart->format("Y") . "/" . ($fiscalYearStart->format("y") + 1)
+    ];
+}
+
 function clockifyDurationToHours($duration) {
     if (!$duration) return 0;
 

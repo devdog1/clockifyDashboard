@@ -3,6 +3,7 @@ require_once "clockify-lib.php";
 
 $teamsFile = __DIR__ . '/teams.json';
 $weekOptions = getFiscalYearWeeks();
+$fyBoundaries = getFiscalYearBoundaries();
 
 function loadTeams($file) {
     if (!file_exists($file)) return [];
@@ -15,12 +16,19 @@ function loadTeams($file) {
 $teams = loadTeams($teamsFile);
 $selectedTeamIndex = isset($_GET['team_index']) && isset($teams[$_GET['team_index']]) ? (int)$_GET['team_index'] : -1;
 $selectedWeek = $_GET['week'] ?? array_key_first($weekOptions);
-if (!array_key_exists($selectedWeek, $weekOptions)) {
+if ($selectedWeek !== 'whole_fy' && !array_key_exists($selectedWeek, $weekOptions)) {
     $selectedWeek = array_key_first($weekOptions);
 }
 
-$weekStart = $weekOptions[$selectedWeek]["start"];
-$weekEnd   = $weekOptions[$selectedWeek]["end"];
+if ($selectedWeek === 'whole_fy') {
+    $weekStart = $fyBoundaries['start'];
+    $weekEnd   = $fyBoundaries['end'];
+    $periodLabel = $fyBoundaries['label'];
+} else {
+    $weekStart = $weekOptions[$selectedWeek]["start"];
+    $weekEnd   = $weekOptions[$selectedWeek]["end"];
+    $periodLabel = "Week: " . $weekOptions[$selectedWeek]['label'];
+}
 
 $results = [];
 $projectSummary = [];
@@ -107,13 +115,18 @@ include "header.php";
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label for="week" class="form-label">Select Week</label>
+                    <label for="week" class="form-label">Select Period</label>
                     <select name="week" id="week" class="form-select">
-                        <?php foreach ($weekOptions as $val => $data): ?>
-                            <option value="<?= $val ?>" <?= $val == $selectedWeek ? "selected" : "" ?>>
-                                <?= $data['label'] ?>
-                            </option>
-                        <?php endforeach; ?>
+                        <option value="whole_fy" <?= $selectedWeek === 'whole_fy' ? "selected" : "" ?>>
+                            Whole Financial Year (<?= $fyBoundaries['label'] ?>)
+                        </option>
+                        <optgroup label="Weekly Reports">
+                            <?php foreach ($weekOptions as $val => $data): ?>
+                                <option value="<?= $val ?>" <?= $val == $selectedWeek ? "selected" : "" ?>>
+                                    <?= $data['label'] ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </optgroup>
                     </select>
                 </div>
                 <div class="col-md-4 align-self-end">
@@ -126,8 +139,8 @@ include "header.php";
     <?php if ($selectedTeamIndex !== -1): ?>
         <div class="alert alert-info">
             <strong>Team:</strong> <?= htmlspecialchars($teams[$selectedTeamIndex]['name']) ?><br>
-            <strong>Week Start:</strong> <?= $weekStart->format("Y-m-d") ?><br>
-            <strong>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?>
+            <strong>Period:</strong> <?= $periodLabel ?><br>
+            <strong>Range:</strong> <?= $weekStart->format("Y-m-d") ?> to <?= $weekEnd->format("Y-m-d") ?>
         </div>
 
         <div class="row">
