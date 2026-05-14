@@ -34,6 +34,12 @@
                     <li class="nav-item">
                         <a class="nav-link" href="clockify-project-task-details.php">Task Details</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="clockify-team-summary.php">Team Summary</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage-teams.php">Manage Teams</a>
+                    </li>
                 </ul>
             </div>
         </div>

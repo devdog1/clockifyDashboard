@@ -43,6 +43,23 @@ include "header.php";
     </div>
 </div>
 
+<div class="row align-items-md-stretch mb-4">
+    <div class="col-md-6">
+        <div class="h-100 p-4 bg-white border rounded-3 shadow-sm">
+            <h2>Team Summary</h2>
+            <p>Aggregated reporting for custom defined teams. View project and user contributions within a team.</p>
+            <a href="clockify-team-summary.php" class="btn btn-outline-secondary btn-sm">View Report</a>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="h-100 p-4 bg-white border rounded-3 shadow-sm">
+            <h2>Manage Teams</h2>
+            <p>Define custom teams and assign users to them for aggregated reporting.</p>
+            <a href="manage-teams.php" class="btn btn-outline-primary btn-sm">Manage Teams</a>
+        </div>
+    </div>
+</div>
+
 <div class="card mb-4">
     <div class="card-header">
         Workspace Information

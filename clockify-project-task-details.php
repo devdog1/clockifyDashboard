@@ -172,22 +172,27 @@ include "header.php";
     <?php endif; ?>
 </div>
 
-<?php include "footer.php"; ?>
-
 <script>
-    const projects = <?= json_encode($projects) ?>;
+    (function() {
+        const projects = <?= json_encode($projects) ?>;
+        const projectText = document.getElementById('projectText');
+        const projectIdField = document.getElementById('project_id');
 
-    $('#projectText').on('input', function () {
-        const name = this.value;
-        let matchedId = '';
+        if (projectText && projectIdField) {
+            projectText.addEventListener('input', function () {
+                const name = this.value;
+                let matchedId = '';
 
-        for (const [id, pname] of Object.entries(projects)) {
-            if (pname === name) {
-                matchedId = id;
-                break;
-            }
+                for (const [id, pname] of Object.entries(projects)) {
+                    if (pname === name) {
+                        matchedId = id;
+                        break;
+                    }
+                }
+                projectIdField.value = matchedId;
+            });
         }
-
-        $('#project_id').val(matchedId);
-    });
+    })();
 </script>
+
+<?php include "footer.php"; ?>
