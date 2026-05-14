@@ -3,7 +3,7 @@ require_once "clockify-lib.php";
 
 $teamsFile = __DIR__ . '/teams.json';
 $weekOptions = getFiscalYearWeeks();
-$fyBoundaries = getFiscalYearBoundaries();
+$fyOptions = getPastFiscalYears(5);
 
 function loadTeams($file) {
     if (!file_exists($file)) return [];
@@ -16,14 +16,14 @@ function loadTeams($file) {
 $teams = loadTeams($teamsFile);
 $selectedTeamIndex = isset($_GET['team_index']) && isset($teams[$_GET['team_index']]) ? (int)$_GET['team_index'] : -1;
 $selectedWeek = $_GET['week'] ?? array_key_first($weekOptions);
-if ($selectedWeek !== 'whole_fy' && !array_key_exists($selectedWeek, $weekOptions)) {
+if (!array_key_exists($selectedWeek, $fyOptions) && !array_key_exists($selectedWeek, $weekOptions)) {
     $selectedWeek = array_key_first($weekOptions);
 }
 
-if ($selectedWeek === 'whole_fy') {
-    $weekStart = $fyBoundaries['start'];
-    $weekEnd   = $fyBoundaries['end'];
-    $periodLabel = $fyBoundaries['label'];
+if (array_key_exists($selectedWeek, $fyOptions)) {
+    $weekStart = $fyOptions[$selectedWeek]['start'];
+    $weekEnd   = $fyOptions[$selectedWeek]['end'];
+    $periodLabel = $fyOptions[$selectedWeek]['label'];
 } else {
     $weekStart = $weekOptions[$selectedWeek]["start"];
     $weekEnd   = $weekOptions[$selectedWeek]["end"];
@@ -102,9 +102,13 @@ include "header.php";
                 <div class="col-md-4">
                     <label for="week" class="form-label">Select Period</label>
                     <select name="week" id="week" class="form-select">
-                        <option value="whole_fy" <?= $selectedWeek === 'whole_fy' ? "selected" : "" ?>>
-                            Whole Financial Year (<?= $fyBoundaries['label'] ?>)
-                        </option>
+                        <optgroup label="Financial Years">
+                            <?php foreach ($fyOptions as $val => $data): ?>
+                                <option value="<?= $val ?>" <?= $val == $selectedWeek ? "selected" : "" ?>>
+                                    <?= $data['label'] ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </optgroup>
                         <optgroup label="Weekly Reports">
                             <?php foreach ($weekOptions as $val => $data): ?>
                                 <option value="<?= $val ?>" <?= $val == $selectedWeek ? "selected" : "" ?>>

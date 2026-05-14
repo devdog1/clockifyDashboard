@@ -123,11 +123,15 @@ function getFiscalYearWeeks() {
     return $weekOptions;
 }
 
-function getFiscalYearBoundaries() {
+function getFiscalYearBoundaries($offset = 0) {
     $today = new DateTime("now", new DateTimeZone("UTC"));
     $currentYear = (int)$today->format("Y");
 
     $fiscalYearStart = new DateTime("Sept 1 " . ($today->format('m') >= 9 ? $currentYear : $currentYear - 1));
+    if ($offset !== 0) {
+        $fiscalYearStart->modify("$offset years");
+    }
+
     $fiscalYearEnd = clone $fiscalYearStart;
     $fiscalYearEnd->modify("+1 year -1 day");
 
@@ -136,6 +140,16 @@ function getFiscalYearBoundaries() {
         'end'   => $fiscalYearEnd,
         'label' => "Financial Year " . $fiscalYearStart->format("Y") . "/" . ($fiscalYearStart->format("y") + 1)
     ];
+}
+
+function getPastFiscalYears($count = 5) {
+    $years = [];
+    for ($i = 0; $i > -$count; $i--) {
+        $bound = getFiscalYearBoundaries($i);
+        $key = "fy_" . $bound['start']->format("Y");
+        $years[$key] = $bound;
+    }
+    return $years;
 }
 
 function clockifyDurationToHours($duration) {
