@@ -1,85 +1,7 @@
 <?php
-require_once "clockify-config.php";
+require_once "clockify-lib.php";
 
-$headers = [
-    "Content-Type: application/json",
-    "X-Api-Key: $apiKey"
-];
-
-$cacheDir = __DIR__ . "/cache";
-$cacheTTL = 60 * 60 * 12; // 12 hours
-$cacheLog = __DIR__ . "/cache/cache.log";
-
-if (!file_exists($cacheDir)) mkdir($cacheDir, 0777, true);
-
-function clockifyGet($url, $headers) {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    $response = curl_exec($ch);
-    curl_close($ch);
-    return json_decode($response, true);
-}
-
-function loadCache($file, $ttl) {
-    return (file_exists($file) && (time() - filemtime($file) <= $ttl))
-        ? json_decode(file_get_contents($file), true)
-        : false;
-}
-
-function saveCache($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
-}
-
-function logCache($msg) {
-    global $cacheLog;
-    $time = date("Y-m-d H:i:s");
-    file_put_contents($cacheLog, "[$time] $msg\n", FILE_APPEND);
-}
-
-/* ------------------------------------------------------------
-   Build Fiscal-Year Weeks (same logic as per-user screen)
--------------------------------------------------------------*/
-$today = new DateTime("now", new DateTimeZone("UTC"));
-$currentYear = (int)$today->format("Y");
-
-$fiscalYearStart = new DateTime("Sept 1 $currentYear");
-$fiscalYearEnd = clone $fiscalYearStart;
-$fiscalYearEnd->modify("+1 year -1 day");
-
-$weekOptions = [];
-$weekStart = clone $fiscalYearStart;
-$weekStart->modify("Monday this week");
-$weekNum = 1;
-
-while ($weekStart <= $fiscalYearEnd) {
-    $weekEnd = clone $weekStart;
-    $weekEnd->modify("+6 days");
-    if ($weekEnd > $fiscalYearEnd) $weekEnd = clone $fiscalYearEnd;
-
-    $label = sprintf(
-        "%d-W%02d (%s → %s)",
-        (int)$fiscalYearStart->format("Y") + 1,
-        $weekNum,
-        $weekStart->format("M-d"),
-        $weekEnd->format("M-d")
-    );
-
-    $value = sprintf("%04d-W%02d",
-        (int)$fiscalYearStart->format("Y") + 1,
-        $weekNum
-    );
-
-    $weekOptions[$value] = [
-        "label" => $label,
-        "start" => clone $weekStart,
-        "end"   => clone $weekEnd
-    ];
-
-    $weekNum++;
-    $weekStart->modify("+7 days");
-}
+$weekOptions = getFiscalYearWeeks();
 
 /* ------------------------------------------------------------
    Validate Input & Select Week
@@ -115,54 +37,55 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
 
     // FY window
+    $fiscalYearStart = reset($weekOptions)["start"]; // Rough estimate for start of FY in options
     $fyStartISO = $fiscalYearStart->format("Y-m-d\TH:i:s\Z");
-    $fyEndISO   = $fiscalYearEnd->format("Y-m-d\TH:i:s\Z");
+    $fyEndISO   = end($weekOptions)["end"]->format("Y-m-d\TH:i:s\Z");
 
     // Load users & projects
-    $users = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users", $headers);
-    $projects = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500", $headers);
+    $users = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
+    $projects = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
 
     $projectNames = [];
-    foreach ($projects as $p) $projectNames[$p["id"]] = $p["name"];
+    if ($projects) {
+        foreach ($projects as $p) $projectNames[$p["id"]] = $p["name"];
+    }
 
     $weeklyResults = [];
     $fyResults = [];
 
-    foreach ($users as $u) {
-        $userId = $u["id"];
+    if ($users) {
+        foreach ($users as $u) {
+            $userId = $u["id"];
 
-        // Process Weekly + FY for each user
-        foreach (["weekly" => [$startISO, $endISO], "fy" => [$fyStartISO, $fyEndISO]] as $mode => $range) {
+            // Process Weekly + FY for each user
+            foreach (["weekly" => [$startISO, $endISO], "fy" => [$fyStartISO, $fyEndISO]] as $mode => $range) {
 
-            [$rangeStart, $rangeEnd] = $range;
+                [$rangeStart, $rangeEnd] = $range;
 
-            $page = 1;
-            while (true) {
-                $entries = clockifyGet(
-                    "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
-                    "?page-size=200&page=$page&start=$rangeStart&end=$rangeEnd",
-                    $headers
-                );
+                $page = 1;
+                while (true) {
+                    $entries = clockifyGet(
+                        "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
+                        "?page-size=200&page=$page&start=$rangeStart&end=$rangeEnd"
+                    );
 
-                if (!$entries || count($entries) === 0) break;
+                    if (!$entries || count($entries) === 0) break;
 
-                foreach ($entries as $e) {
-                    if (!isset($e["timeInterval"]["duration"])) continue;
-                    $d = new DateInterval($e["timeInterval"]["duration"]);
-                    $seconds = ($d->d * 86400) + ($d->h * 3600) + ($d->i * 60) + $d->s;
+                    foreach ($entries as $e) {
+                        if (!isset($e["timeInterval"]["duration"])) continue;
+                        $hours = clockifyDurationToHours($e["timeInterval"]["duration"]);
 
-                    $projectId = $e["projectId"] ?? "NO_PROJECT";
-                    $projectLabel = $projectNames[$projectId] ?? "No Project";
+                        $projectId = $e["projectId"] ?? "NO_PROJECT";
+                        $projectLabel = $projectNames[$projectId] ?? "No Project";
 
-                    if ($mode === "weekly") {
-                        $weeklyResults[$projectLabel] =
-                            ($weeklyResults[$projectLabel] ?? 0) + ($seconds / 3600);
-                    } else {
-                        $fyResults[$projectLabel] =
-                            ($fyResults[$projectLabel] ?? 0) + ($seconds / 3600);
+                        if ($mode === "weekly") {
+                            $weeklyResults[$projectLabel] = ($weeklyResults[$projectLabel] ?? 0) + $hours;
+                        } else {
+                            $fyResults[$projectLabel] = ($fyResults[$projectLabel] ?? 0) + $hours;
+                        }
                     }
+                    $page++;
                 }
-                $page++;
             }
         }
     }
@@ -171,17 +94,11 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     saveCache($fyCacheFile, ["fy" => $fyResults]);
 }
 
+$pageTitle = "Clockify Project Summary";
+include "header.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Clockify Project Summary</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-<div class="container my-4">
 
+<div class="my-4">
     <h2 class="mb-4">Project Summary (Weekly + Fiscal Year)</h2>
 
     <!-- Week Selector -->
@@ -202,60 +119,69 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     </form>
 
     <!-- Week Info -->
-    <p>
+    <div class="alert alert-info">
         <strong>Week Start:</strong> <?= $weekStart->format("Y-m-d") ?><br>
-        <strong>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?><br>
-        <strong>Weekly Cache:</strong> <?= basename($cacheFile) ?><br>
-        <strong>FY Cache:</strong> <?= basename($fyCacheFile) ?>
-    </p>
-
-    <!-- Weekly Table -->
-    <h4 class="mt-4">Weekly Project Hours</h4>
-    <div class="table-responsive">
-        <table class="table table-bordered table-striped table-hover bg-white">
-            <thead class="table-secondary">
-                <tr>
-                    <th>Project</th>
-                    <th>Hours</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($weeklyResults as $project => $hours): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($project) ?></td>
-                        <td><?= number_format($hours, 2) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+        <strong>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?>
     </div>
 
-    <!-- Fiscal Year Table -->
-    <h4 class="mt-5">Fiscal Year Project Summary</h4>
-    <div class="table-responsive">
-        <table class="table table-bordered table-striped table-hover bg-white">
-            <thead class="table-dark">
-                <tr>
-                    <th>Project</th>
-                    <th>Total Hours (FYTD)</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($fyResults as $project => $hours): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($project) ?></td>
-                        <td><?= number_format($hours, 2) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <div class="row">
+        <div class="col-md-6">
+            <!-- Weekly Table -->
+            <h4 class="mt-4">Weekly Project Hours</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover bg-white">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Project</th>
+                            <th>Hours</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($weeklyResults)): ?>
+                            <tr><td colspan="2" class="text-center">No data for this week</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($weeklyResults as $project => $hours): ?>
+                                <tr>
+                                    <td><?= htmlspecialchars($project) ?></td>
+                                    <td><?= number_format($hours, 2) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <!-- Fiscal Year Table -->
+            <h4 class="mt-4">Fiscal Year Project Summary</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover bg-white">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Project</th>
+                            <th>Total Hours (FYTD)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($fyResults)): ?>
+                            <tr><td colspan="2" class="text-center">No data for this fiscal year</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($fyResults as $project => $hours): ?>
+                                <tr>
+                                    <td><?= htmlspecialchars($project) ?></td>
+                                    <td><?= number_format($hours, 2) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
-    <p class="text-muted mt-3">
+    <p class="text-muted mt-3 small">
         Cache hits/misses logged to <code>cache/cache.log</code>
     </p>
-
 </div>
-</body>
-</html>
 
+<?php include "footer.php"; ?>
