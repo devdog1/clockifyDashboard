@@ -1,0 +1,11 @@
+<?php
+/**
+ * Clockify API configuration file
+ * Clockify API documntation found at https://docs.clockify.me/#section/Webhooks
+ * Limit API to a max of 48 requests per second 
+ * Store only variables here to keep them out of the main script.
+ */
+
+$apiKey      = "<apikey>";
+$workspaceId = "<workspaceId>";
+
