@@ -152,6 +152,25 @@ function getPastFiscalYears($count = 5) {
     return $years;
 }
 
+function getPeriodOptions($fyCount = 5) {
+    return [
+        'fy'    => getPastFiscalYears($fyCount),
+        'weeks' => getFiscalYearWeeks()
+    ];
+}
+
+function resolveSelectedPeriod($selectedKey, $periodOptions) {
+    if (isset($periodOptions['fy'][$selectedKey])) {
+        return $periodOptions['fy'][$selectedKey];
+    }
+    if (isset($periodOptions['weeks'][$selectedKey])) {
+        return $periodOptions['weeks'][$selectedKey];
+    }
+    // Default to current week
+    $firstWeekKey = array_key_first($periodOptions['weeks']);
+    return $periodOptions['weeks'][$firstWeekKey];
+}
+
 function clockifyDurationToHours($duration) {
     if (!$duration) return 0;
 

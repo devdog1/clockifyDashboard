@@ -1,32 +1,20 @@
 <?php
 require_once "clockify-lib.php";
 
-$weekOptions = getFiscalYearWeeks();
+$periodOptions = getPeriodOptions();
 
 // -------------------------------
 // Validate user input
 // -------------------------------
-$selectedWeek = $_GET['week'] ?? array_key_first($weekOptions);
-if (!array_key_exists($selectedWeek, $weekOptions)) {
-    $selectedWeek = array_key_first($weekOptions);
-}
+$selectedPeriodKey = $_GET['period'] ?? array_key_first($periodOptions['weeks']);
+$period = resolveSelectedPeriod($selectedPeriodKey, $periodOptions);
 
-$weekStart = $weekOptions[$selectedWeek]["start"];
-$weekEnd   = $weekOptions[$selectedWeek]["end"];
-
-// Cache filename
-$cacheFile = "$cacheDir/clockify_week_{$selectedWeek}.json";
+$weekStart = $period["start"];
+$weekEnd   = $period["end"];
 
 // -------------------------------
-// Load cache
+// Load data
 // -------------------------------
-$cachedData = loadCache($cacheFile, $cacheTTL);
-if ($cachedData !== false) {
-    $results = $cachedData["results"];
-    logCache("CACHE HIT: $cacheFile");
-} else {
-    logCache("CACHE MISS: $cacheFile");
-
     $startISO = $weekStart->format("Y-m-d\TH:i:s\Z");
     $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
 
@@ -67,12 +55,6 @@ if ($cachedData !== false) {
         }
     }
 
-    saveCache($cacheFile, [
-        "results" => $results,
-        "weekStart" => $weekStart->format("Y-m-d"),
-        "weekEnd"   => $weekEnd->format("Y-m-d")
-    ]);
-}
 
 $pageTitle = "Weekly User Project Hours";
 include "header.php";
@@ -83,11 +65,18 @@ include "header.php";
 
     <form method="GET" class="row g-3 mb-4">
         <div class="col-auto">
-            <label for="week" class="form-label">Select Week (Fiscal Year):</label>
-            <select name="week" id="week" class="form-select">
-                <?php foreach ($weekOptions as $val => $data): ?>
-                    <option value="<?= $val ?>" <?= $val == $selectedWeek ? "selected" : "" ?>><?= $data['label'] ?></option>
-                <?php endforeach; ?>
+            <label for="period" class="form-label">Select Period:</label>
+            <select name="period" id="period" class="form-select">
+                <optgroup label="Financial Years">
+                    <?php foreach ($periodOptions['fy'] as $val => $data): ?>
+                        <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                    <?php endforeach; ?>
+                </optgroup>
+                <optgroup label="Weekly Reports">
+                    <?php foreach ($periodOptions['weeks'] as $val => $data): ?>
+                        <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                    <?php endforeach; ?>
+                </optgroup>
             </select>
         </div>
         <div class="col-auto align-self-end">

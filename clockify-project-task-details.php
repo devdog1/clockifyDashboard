@@ -40,19 +40,21 @@ function getUsers()
 //---------------------------------------------------------------
 // Fetch all time entries for selected project
 //---------------------------------------------------------------
-function getProjectEntries($projectId, $users)
+function getProjectEntries($projectId, $users, $start = null, $end = null)
 {
     global $workspaceId;
     $entries = [];
 
+    $base = "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/{USER_ID}/time-entries?project=$projectId&page-size=500";
+    if ($start) $base .= "&start=" . $start->format("Y-m-d\TH:i:s\Z");
+    if ($end)   $base .= "&end="   . $end->format("Y-m-d\TH:i:s\Z");
+
     foreach ($users as $userId => $userName) {
         $page = 1;
+        $userUrl = str_replace("{USER_ID}", $userId, $base);
 
         while (true) {
-            $url =
-                "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
-                "?project=$projectId&page=$page&page-size=500";
-
+            $url = "$userUrl&page=$page";
             $data = clockifyGetCached($url);
             if (!is_array($data) || empty($data)) break;
 
@@ -82,13 +84,17 @@ function getProjectEntries($projectId, $users)
 //---------------------------------------------------------------
 $projects = getProjects();
 $users    = getUsers();
+$periodOptions = getPeriodOptions();
 
 $projectId = $_GET['project_id'] ?? '';
 $selectedName = $projectId && isset($projects[$projectId]) ? $projects[$projectId] : '';
 
+$selectedPeriodKey = $_GET['period'] ?? array_key_first($periodOptions['weeks']);
+$period = resolveSelectedPeriod($selectedPeriodKey, $periodOptions);
+
 $entries = [];
 if ($projectId) {
-    $entries = getProjectEntries($projectId, $users);
+    $entries = getProjectEntries($projectId, $users, $period['start'], $period['end']);
 }
 
 $pageTitle = "Clockify Project Task Details";
@@ -97,11 +103,12 @@ include "header.php";
 
 <div class="my-4">
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white"><strong>Select a Project</strong></div>
+        <div class="card-header bg-primary text-white"><strong>Report Options</strong></div>
         <div class="card-body">
             <form method="get" class="row g-3" id="projectForm">
 
-                <div class="col-md-9">
+                <div class="col-md-5">
+                    <label for="projectText" class="form-label">Project</label>
                     <input
                         class="form-control"
                         list="projectList"
@@ -122,7 +129,23 @@ include "header.php";
                            value="<?= htmlspecialchars($projectId) ?>">
                 </div>
 
-                <div class="col-md-3">
+                <div class="col-md-4">
+                    <label for="period" class="form-label">Period</label>
+                    <select name="period" id="period" class="form-select">
+                        <optgroup label="Financial Years">
+                            <?php foreach ($periodOptions['fy'] as $val => $data): ?>
+                                <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                        <optgroup label="Weekly Reports">
+                            <?php foreach ($periodOptions['weeks'] as $val => $data): ?>
+                                <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="col-md-3 align-self-end">
                     <button class="btn btn-primary w-100">Load Task Details</button>
                 </div>
 

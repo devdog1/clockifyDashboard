@@ -1,45 +1,27 @@
 <?php
 require_once "clockify-lib.php";
 
-$weekOptions = getFiscalYearWeeks();
+$periodOptions = getPeriodOptions();
 
 /* ------------------------------------------------------------
-   Validate Input & Select Week
+   Validate Input & Select Period
 -------------------------------------------------------------*/
-$selectedWeek = $_GET["week"] ?? array_key_first($weekOptions);
-if (!array_key_exists($selectedWeek, $weekOptions)) {
-    $selectedWeek = array_key_first($weekOptions);
-}
+$selectedPeriodKey = $_GET["period"] ?? array_key_first($periodOptions['weeks']);
+$period = resolveSelectedPeriod($selectedPeriodKey, $periodOptions);
 
-$weekStart = $weekOptions[$selectedWeek]["start"];
-$weekEnd   = $weekOptions[$selectedWeek]["end"];
+$weekStart = $period["start"];
+$weekEnd   = $period["end"];
 
 /* ------------------------------------------------------------
-   Cache File
+   Rebuilding Weekly + FY Summary
 -------------------------------------------------------------*/
-$cacheFile = "$cacheDir/clockify_project_summary_{$selectedWeek}.json";
-$fyCacheFile = "$cacheDir/clockify_project_fy_summary.json";
-
-/* ------------------------------------------------------------
-   Load Weekly Cache or Build
--------------------------------------------------------------*/
-$cachedWeekly = loadCache($cacheFile, $cacheTTL);
-$cachedFY     = loadCache($fyCacheFile, $cacheTTL);
-
-if ($cachedWeekly !== false && $cachedFY !== false) {
-    logCache("CACHE HIT: Weekly + FY Summary");
-    $weeklyResults = $cachedWeekly["weekly"];
-    $fyResults = $cachedFY["fy"];
-} else {
-    logCache("CACHE MISS: Rebuilding Weekly + FY Summary");
-
     $startISO = $weekStart->format("Y-m-d\TH:i:s\Z");
     $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
 
-    // FY window
-    $fiscalYearStart = reset($weekOptions)["start"]; // Rough estimate for start of FY in options
-    $fyStartISO = $fiscalYearStart->format("Y-m-d\TH:i:s\Z");
-    $fyEndISO   = end($weekOptions)["end"]->format("Y-m-d\TH:i:s\Z");
+    // FY window (Current FY for comparison)
+    $currentFY = getFiscalYearBoundaries();
+    $fyStartISO = $currentFY['start']->format("Y-m-d\TH:i:s\Z");
+    $fyEndISO   = $currentFY['end']->format("Y-m-d\TH:i:s\Z");
 
     // Load users & projects
     $users = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
@@ -90,27 +72,28 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
         }
     }
 
-    saveCache($cacheFile, ["weekly" => $weeklyResults]);
-    saveCache($fyCacheFile, ["fy" => $fyResults]);
-}
-
 $pageTitle = "Clockify Project Summary";
 include "header.php";
 ?>
 
 <div class="my-4">
-    <h2 class="mb-4">Project Summary (Weekly + Fiscal Year)</h2>
+    <h2 class="mb-4">Project Summary (Selected Period + Current FYTD)</h2>
 
-    <!-- Week Selector -->
+    <!-- Period Selector -->
     <form method="GET" class="row g-3 mb-4">
         <div class="col-auto">
-            <label for="week" class="form-label">Select Week (Fiscal Year):</label>
-            <select name="week" id="week" class="form-select">
-                <?php foreach ($weekOptions as $val => $data): ?>
-                    <option value="<?= $val ?>" <?= $val === $selectedWeek ? "selected" : "" ?>>
-                        <?= $data["label"] ?>
-                    </option>
-                <?php endforeach; ?>
+            <label for="period" class="form-label">Select Period:</label>
+            <select name="period" id="period" class="form-select">
+                <optgroup label="Financial Years">
+                    <?php foreach ($periodOptions['fy'] as $val => $data): ?>
+                        <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                    <?php endforeach; ?>
+                </optgroup>
+                <optgroup label="Weekly Reports">
+                    <?php foreach ($periodOptions['weeks'] as $val => $data): ?>
+                        <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                    <?php endforeach; ?>
+                </optgroup>
             </select>
         </div>
         <div class="col-auto align-self-end">
@@ -126,8 +109,8 @@ include "header.php";
 
     <div class="row">
         <div class="col-md-6">
-            <!-- Weekly Table -->
-            <h4 class="mt-4">Weekly Project Hours</h4>
+            <!-- Selected Period Table -->
+            <h4 class="mt-4">Project Hours (Selected Period)</h4>
             <div class="table-responsive">
                 <table class="table table-bordered table-striped table-hover bg-white">
                     <thead class="table-secondary">

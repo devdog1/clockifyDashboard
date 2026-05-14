@@ -39,14 +39,18 @@ function getProjects()
 //---------------------------------------------------------------
 // Fetch all time entries for selected user
 //---------------------------------------------------------------
-function getUserEntries($userId, $projectNames)
+function getUserEntries($userId, $projectNames, $start = null, $end = null)
 {
     global $workspaceId;
     $entries = [];
 
+    $baseUrl = "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries?page-size=500";
+    if ($start) $baseUrl .= "&start=" . $start->format("Y-m-d\TH:i:s\Z");
+    if ($end)   $baseUrl .= "&end="   . $end->format("Y-m-d\TH:i:s\Z");
+
     $page = 1;
     while (true) {
-        $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries?page=$page&page-size=500";
+        $url = "$baseUrl&page=$page";
         $data = clockifyGetCached($url);
         if (!is_array($data) || empty($data)) break;
 
@@ -79,16 +83,20 @@ function getUserEntries($userId, $projectNames)
 //---------------------------------------------------------------
 $users = getUsers();
 $projectNames = getProjects();
+$periodOptions = getPeriodOptions();
 
 $userId = $_GET['user_id'] ?? '';
 $selectedUserName = $userId && isset($users[$userId]) ? $users[$userId] : '';
+
+$selectedPeriodKey = $_GET['period'] ?? array_key_first($periodOptions['weeks']);
+$period = resolveSelectedPeriod($selectedPeriodKey, $periodOptions);
 
 $entries = [];
 $projectContributions = [];
 $weeklySummary = [];
 
 if ($userId) {
-    $entries = getUserEntries($userId, $projectNames);
+    $entries = getUserEntries($userId, $projectNames, $period['start'], $period['end']);
 
     // Aggregate by project and week
     foreach ($entries as $e) {
@@ -122,10 +130,11 @@ include "header.php";
 
 <div class="my-4">
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white"><strong>Select a User</strong></div>
+        <div class="card-header bg-primary text-white"><strong>Report Options</strong></div>
         <div class="card-body">
             <form method="get" class="row g-3">
-                <div class="col-md-9">
+                <div class="col-md-5">
+                    <label for="user_id" class="form-label">User</label>
                     <select name="user_id" id="user_id" class="form-select">
                         <option value="">-- Select a User --</option>
                         <?php foreach ($users as $uid => $uname): ?>
@@ -135,8 +144,23 @@ include "header.php";
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <button class="btn btn-primary w-100">Load User Details</button>
+                <div class="col-md-4">
+                    <label for="period" class="form-label">Period</label>
+                    <select name="period" id="period" class="form-select">
+                        <optgroup label="Financial Years">
+                            <?php foreach ($periodOptions['fy'] as $val => $data): ?>
+                                <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                        <optgroup label="Weekly Reports">
+                            <?php foreach ($periodOptions['weeks'] as $val => $data): ?>
+                                <option value="<?= $val ?>" <?= $val == $selectedPeriodKey ? "selected" : "" ?>><?= $data['label'] ?></option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="col-md-3 align-self-end">
+                    <button class="btn btn-primary w-100">Load Report</button>
                 </div>
             </form>
         </div>
