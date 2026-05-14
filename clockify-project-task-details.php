@@ -1,71 +1,14 @@
 <?php
-//---------------------------------------------------------------
-// clockify-project-task-details.php
-// Shows all tasks logged under a specific Clockify project
-//---------------------------------------------------------------
-
-require_once __DIR__ . '/clockify-config.php'; // Provides $apiKey, $workspaceId
-
-//---------------------------------------------------------------
-// Safe duration parser
-//---------------------------------------------------------------
-function clockifyDurationToHours($duration)
-{
-    if (!$duration) return 0;
-
-    if (is_numeric($duration)) {
-        return round(abs((int)$duration) / 3600, 2);
-    }
-
-    if (preg_match('/^PT/i', $duration)) {
-        try {
-            $interval = new DateInterval($duration);
-            $seconds =
-                ($interval->d * 86400) +
-                ($interval->h * 3600) +
-                ($interval->i * 60) +
-                $interval->s;
-            return round($seconds / 3600, 2);
-        } catch (Exception $e) {
-            return 0;
-        }
-    }
-
-    return 0;
-}
-
-//---------------------------------------------------------------
-// Call Clockify API
-//---------------------------------------------------------------
-function callClockify($url, $apiKey)
-{
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ["X-Api-Key: $apiKey"]);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-    $resp = curl_exec($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($http < 200 || $http >= 300) {
-        error_log("[clockify-project-task-details] API error | " . json_encode([
-            'http' => $http,
-            'url'  => $url,
-            'body' => $resp
-        ]));
-        return null;
-    }
-
-    return json_decode($resp, true);
-}
+require_once "clockify-lib.php";
 
 //---------------------------------------------------------------
 // Fetch project list
 //---------------------------------------------------------------
-function getProjects($apiKey, $workspaceId)
+function getProjects()
 {
+    global $workspaceId;
     $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=5000";
-    $data = callClockify($url, $apiKey);
+    $data = clockifyGet($url);
     if (!is_array($data)) return [];
 
     $out = [];
@@ -80,10 +23,11 @@ function getProjects($apiKey, $workspaceId)
 //---------------------------------------------------------------
 // Fetch user list
 //---------------------------------------------------------------
-function getUsers($apiKey, $workspaceId)
+function getUsers()
 {
+    global $workspaceId;
     $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/users?page-size=5000";
-    $data = callClockify($url, $apiKey);
+    $data = clockifyGet($url);
     if (!is_array($data)) return [];
 
     $out = [];
@@ -96,8 +40,9 @@ function getUsers($apiKey, $workspaceId)
 //---------------------------------------------------------------
 // Fetch all time entries for selected project
 //---------------------------------------------------------------
-function getProjectEntries($apiKey, $workspaceId, $projectId, $users)
+function getProjectEntries($projectId, $users)
 {
+    global $workspaceId;
     $entries = [];
 
     foreach ($users as $userId => $userName) {
@@ -108,7 +53,7 @@ function getProjectEntries($apiKey, $workspaceId, $projectId, $users)
                 "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
                 "?project=$projectId&page=$page&page-size=500";
 
-            $data = callClockify($url, $apiKey);
+            $data = clockifyGet($url);
             if (!is_array($data) || empty($data)) break;
 
             foreach ($data as $entry) {
@@ -135,38 +80,28 @@ function getProjectEntries($apiKey, $workspaceId, $projectId, $users)
 //---------------------------------------------------------------
 // MAIN
 //---------------------------------------------------------------
-$projects = getProjects($apiKey, $workspaceId);
-$users    = getUsers($apiKey, $workspaceId);
+$projects = getProjects();
+$users    = getUsers();
 
 $projectId = $_GET['project_id'] ?? '';
 $selectedName = $projectId && isset($projects[$projectId]) ? $projects[$projectId] : '';
 
 $entries = [];
 if ($projectId) {
-    $entries = getProjectEntries($apiKey, $workspaceId, $projectId, $users);
+    $entries = getProjectEntries($projectId, $users);
 }
+
+$pageTitle = "Clockify Project Task Details";
+include "header.php";
 ?>
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Clockify – Project Task Details</title>
 
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
-
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-</head>
-
-<body class="bg-light">
-
-<div class="container mt-4">
-
+<div class="my-4">
     <div class="card shadow-sm mb-4">
-        <div class="card-header"><strong>Select a Project</strong></div>
+        <div class="card-header bg-primary text-white"><strong>Select a Project</strong></div>
         <div class="card-body">
             <form method="get" class="row g-3" id="projectForm">
 
-                <div class="col-md-6">
+                <div class="col-md-9">
                     <input
                         class="form-control"
                         list="projectList"
@@ -187,8 +122,8 @@ if ($projectId) {
                            value="<?= htmlspecialchars($projectId) ?>">
                 </div>
 
-                <div class="col-md-2">
-                    <button class="btn btn-primary w-100">Load</button>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100">Load Task Details</button>
                 </div>
 
             </form>
@@ -197,15 +132,15 @@ if ($projectId) {
 
     <?php if ($projectId && $selectedName): ?>
         <div class="card shadow-sm">
-            <div class="card-header">
-                <strong><?= htmlspecialchars($selectedName) ?></strong>
+            <div class="card-header bg-dark text-white">
+                <strong>Project: <?= htmlspecialchars($selectedName) ?></strong>
             </div>
 
             <div class="card-body p-0">
 
                 <?php if (empty($entries)): ?>
                     <div class="p-3 text-center text-muted">
-                        No time entries found.
+                        No time entries found for this project.
                     </div>
                 <?php else: ?>
 
@@ -235,13 +170,14 @@ if ($projectId) {
             </div>
         </div>
     <?php endif; ?>
-
 </div>
+
+<?php include "footer.php"; ?>
 
 <script>
     const projects = <?= json_encode($projects) ?>;
 
-    $('#projectText').on('change', function () {
+    $('#projectText').on('input', function () {
         const name = this.value;
         let matchedId = '';
 
@@ -255,7 +191,3 @@ if ($projectId) {
         $('#project_id').val(matchedId);
     });
 </script>
-
-</body>
-</html>
-

@@ -1,87 +1,7 @@
 <?php
-require_once "clockify-config.php";
+require_once "clockify-lib.php";
 
-$headers = [
-    "Content-Type: application/json",
-    "X-Api-Key: $apiKey"
-];
-
-$cacheDir = __DIR__ . "/cache";
-$cacheTTL = 60 * 60 * 12; // 12 hours
-$cacheLog = __DIR__ . "/cache/cache.log";
-
-if (!file_exists($cacheDir)) mkdir($cacheDir, 0777, true);
-
-function clockifyGet($url, $headers) {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    $response = curl_exec($ch);
-    curl_close($ch);
-    return json_decode($response, true);
-}
-
-function loadCache($file, $ttl) {
-    return (file_exists($file) && (time() - filemtime($file) <= $ttl))
-        ? json_decode(file_get_contents($file), true)
-        : false;
-}
-
-function saveCache($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
-}
-
-function logCache($msg) {
-    global $cacheLog;
-    $time = date("Y-m-d H:i:s");
-    file_put_contents($cacheLog, "[$time] $msg\n", FILE_APPEND);
-}
-
-// -------------------------------
-// Determine Fiscal-Year-Based Week Options
-// -------------------------------
-$today = new DateTime("now", new DateTimeZone("UTC"));
-$currentYear = (int)$today->format("Y");
-
-// Fiscal year: Sept 1 to Aug 31 next year
-$fiscalYearStart = new DateTime("Sept 1 $currentYear");
-$fiscalYearEnd = clone $fiscalYearStart;
-$fiscalYearEnd->modify("+1 year -1 day");
-
-$weekOptions = [];
-$weekNum = 1;
-$weekStart = clone $fiscalYearStart;
-
-// Align first week to Monday
-$weekStart->modify('Monday this week');
-
-while ($weekStart <= $fiscalYearEnd) {
-    $weekEnd = clone $weekStart;
-    $weekEnd->modify("+6 days");
-    if ($weekEnd > $fiscalYearEnd) $weekEnd = clone $fiscalYearEnd;
-
-    $label = sprintf("%d-W%02d (%s → %s)",
-        (int)$fiscalYearStart->format("Y") + 1, // fiscal year label
-        $weekNum,
-        $weekStart->format("M-d"),
-        $weekEnd->format("M-d")
-    );
-
-    $value = sprintf("%04d-W%02d",
-        (int)$fiscalYearStart->format("Y") + 1,
-        $weekNum
-    );
-
-    $weekOptions[$value] = [
-        "label" => $label,
-        "start" => clone $weekStart,
-        "end"   => clone $weekEnd
-    ];
-
-    $weekNum++;
-    $weekStart->modify("+7 days");
-}
+$weekOptions = getFiscalYearWeeks();
 
 // -------------------------------
 // Validate user input
@@ -111,37 +31,39 @@ if ($cachedData !== false) {
     $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
 
     // Fetch users and projects
-    $users = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users", $headers);
-    $projects = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500", $headers);
+    $users = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
+    $projects = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
 
     $projectNames = [];
-    foreach ($projects as $p) $projectNames[$p["id"]] = $p["name"];
+    if ($projects) {
+        foreach ($projects as $p) $projectNames[$p["id"]] = $p["name"];
+    }
 
     // Process time entries
     $results = [];
-    foreach ($users as $u) {
-        $userId = $u["id"];
-        $userName = $u["name"];
-        $page = 1;
+    if ($users) {
+        foreach ($users as $u) {
+            $userId = $u["id"];
+            $userName = $u["name"];
+            $page = 1;
 
-        while (true) {
-            $entries = clockifyGet(
-                "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
-                "?page-size=200&page=$page&start=$startISO&end=$endISO",
-                $headers
-            );
-            if (!$entries || count($entries) === 0) break;
+            while (true) {
+                $entries = clockifyGet(
+                    "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
+                    "?page-size=200&page=$page&start=$startISO&end=$endISO"
+                );
+                if (!$entries || count($entries) === 0) break;
 
-            foreach ($entries as $e) {
-                if (!isset($e["timeInterval"]["duration"])) continue;
-                $d = new DateInterval($e["timeInterval"]["duration"]);
-                $seconds = ($d->d*86400)+($d->h*3600)+($d->i*60)+$d->s;
-                $projectId = $e["projectId"] ?? "NO_PROJECT";
-                $projectLabel = $projectNames[$projectId] ?? "No Project";
+                foreach ($entries as $e) {
+                    if (!isset($e["timeInterval"]["duration"])) continue;
+                    $hours = clockifyDurationToHours($e["timeInterval"]["duration"]);
+                    $projectId = $e["projectId"] ?? "NO_PROJECT";
+                    $projectLabel = $projectNames[$projectId] ?? "No Project";
 
-                $results[$userName][$projectLabel] = ($results[$userName][$projectLabel] ?? 0) + $seconds/3600;
+                    $results[$userName][$projectLabel] = ($results[$userName][$projectLabel] ?? 0) + $hours;
+                }
+                $page++;
             }
-            $page++;
         }
     }
 
@@ -152,17 +74,11 @@ if ($cachedData !== false) {
     ]);
 }
 
+$pageTitle = "Weekly User Project Hours";
+include "header.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Weekly User Project Hours</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
 
-<div class="container my-4">
+<div class="my-4">
     <h2 class="mb-4">Weekly Project Hours per User (Fiscal Year)</h2>
 
     <form method="GET" class="row g-3 mb-4">
@@ -179,11 +95,10 @@ if ($cachedData !== false) {
         </div>
     </form>
 
-    <p>
+    <div class="alert alert-info">
         <strong>Week Start:</strong> <?= $weekStart->format("Y-m-d") ?><br>
-        <strong>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?><br>
-        <strong>Cache File:</strong> <?= basename($cacheFile) ?>
-    </p>
+        <strong>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?>
+    </div>
 
     <div class="table-responsive">
         <table class="table table-bordered table-striped table-hover bg-white">
@@ -195,23 +110,24 @@ if ($cachedData !== false) {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($results as $user => $projects): ?>
-                    <?php foreach ($projects as $project => $hours): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($user) ?></td>
-                            <td><?= htmlspecialchars($project) ?></td>
-                            <td><?= number_format($hours,2) ?></td>
-                        </tr>
+                <?php if (empty($results)): ?>
+                    <tr><td colspan="3" class="text-center">No data for this week</td></tr>
+                <?php else: ?>
+                    <?php foreach ($results as $user => $projects): ?>
+                        <?php foreach ($projects as $project => $hours): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($user) ?></td>
+                                <td><?= htmlspecialchars($project) ?></td>
+                                <td><?= number_format($hours,2) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
                     <?php endforeach; ?>
-                <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
 
-    <p class="text-muted"><em>Cache hits/misses logged to <code>cache/cache.log</code></em></p>
+    <p class="text-muted mt-3 small"><em>Cache hits/misses logged to <code>cache/cache.log</code></em></p>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
-
+<?php include "footer.php"; ?>
