@@ -26,6 +26,9 @@
                         <a class="nav-link" href="clockify-weekly-user-projects.php">User Weekly</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="clockify-user-details.php">User Details</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="clockify-project-summary.php">Project Summary</a>
                     </li>
                     <li class="nav-item">
