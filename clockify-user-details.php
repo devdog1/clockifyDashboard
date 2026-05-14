@@ -85,19 +85,35 @@ $selectedUserName = $userId && isset($users[$userId]) ? $users[$userId] : '';
 
 $entries = [];
 $projectContributions = [];
+$weeklySummary = [];
 
 if ($userId) {
     $entries = getUserEntries($userId, $projectNames);
 
-    // Aggregate by project
+    // Aggregate by project and week
     foreach ($entries as $e) {
+        // Project aggregation
         $pName = $e['project_name'];
         if (!isset($projectContributions[$pName])) {
             $projectContributions[$pName] = 0;
         }
         $projectContributions[$pName] += $e['hours'];
+
+        // Weekly aggregation
+        if ($e['date']) {
+            $date = new DateTime($e['date']);
+            $weekYear = $date->format('o'); // ISO-8601 year
+            $weekNum = $date->format('W');
+            $weekKey = "$weekYear-W$weekNum";
+
+            if (!isset($weeklySummary[$weekKey])) {
+                $weeklySummary[$weekKey] = 0;
+            }
+            $weeklySummary[$weekKey] += $e['hours'];
+        }
     }
     arsort($projectContributions);
+    krsort($weeklySummary); // Sort by week descending
 }
 
 $pageTitle = "Clockify User Details";
@@ -148,6 +164,32 @@ include "header.php";
                                     <?php foreach ($projectContributions as $pName => $hours): ?>
                                         <tr>
                                             <td><?= htmlspecialchars($pName) ?></td>
+                                            <td class="text-end"><?= number_format($hours, 2) ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-secondary text-white"><strong>Weekly Summary</strong></div>
+                    <div class="card-body p-0">
+                        <table class="table table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Week</th>
+                                    <th class="text-end">Total Hours</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($weeklySummary)): ?>
+                                    <tr><td colspan="2" class="text-center">No weekly data found.</td></tr>
+                                <?php else: ?>
+                                    <?php foreach ($weeklySummary as $week => $hours): ?>
+                                        <tr>
+                                            <td><?= htmlspecialchars($week) ?></td>
                                             <td class="text-end"><?= number_format($hours, 2) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
