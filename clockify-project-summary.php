@@ -42,8 +42,8 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     $fyEndISO   = end($weekOptions)["end"]->format("Y-m-d\TH:i:s\Z");
 
     // Load users & projects
-    $users = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
-    $projects = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
+    $users = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
+    $projects = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
 
     $projectNames = [];
     if ($projects) {
@@ -64,7 +64,7 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
 
                 $page = 1;
                 while (true) {
-                    $entries = clockifyGet(
+                    $entries = clockifyGetCached(
                         "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
                         "?page-size=200&page=$page&start=$rangeStart&end=$rangeEnd"
                     );

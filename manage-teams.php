@@ -21,7 +21,7 @@ function saveTeams($file, $teams) {
 function getUsers() {
     global $workspaceId;
     $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/users?page-size=5000";
-    $data = clockifyGet($url);
+    $data = clockifyGetCached($url);
     if (!is_array($data)) return [];
 
     $out = [];

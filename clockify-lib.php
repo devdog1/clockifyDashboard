@@ -39,6 +39,25 @@ function clockifyGet($url) {
     return json_decode($response, true);
 }
 
+function clockifyGetCached($url, $ttl = null) {
+    global $cacheDir, $cacheTTL;
+    if ($ttl === null) $ttl = $cacheTTL;
+
+    $cacheFile = $cacheDir . "/api_" . md5($url) . ".json";
+
+    if (file_exists($cacheFile) && (time() - filemtime($cacheFile) <= $ttl)) {
+        logCache("CACHE HIT: $url");
+        return json_decode(file_get_contents($cacheFile), true);
+    }
+
+    logCache("CACHE MISS: $url");
+    $data = clockifyGet($url);
+    if ($data !== null) {
+        file_put_contents($cacheFile, json_encode($data));
+    }
+    return $data;
+}
+
 function loadCache($file, $ttl) {
     if (file_exists($file) && (time() - filemtime($file) <= $ttl)) {
         return json_decode(file_get_contents($file), true);

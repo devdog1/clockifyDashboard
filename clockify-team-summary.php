@@ -35,61 +35,46 @@ $projectSummary = [];
 
 if ($selectedTeamIndex !== -1) {
     $team = $teams[$selectedTeamIndex];
-    $cacheFile = "$cacheDir/clockify_team_{$selectedTeamIndex}_{$selectedWeek}.json";
 
-    $cachedData = loadCache($cacheFile, $cacheTTL);
-    if ($cachedData !== false) {
-        $results = $cachedData['results'];
-        $projectSummary = $cachedData['projectSummary'];
-        logCache("CACHE HIT: $cacheFile");
-    } else {
-        logCache("CACHE MISS: $cacheFile");
+    $startISO = $weekStart->format("Y-m-d\TH:i:s\Z");
+    $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
 
-        $startISO = $weekStart->format("Y-m-d\TH:i:s\Z");
-        $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
+    // Fetch users and projects
+    $allUsersData = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
+    $allProjectsData = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
 
-        // Fetch users and projects
-        $allUsersData = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
-        $allProjectsData = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
+    $userNames = [];
+    if ($allUsersData) {
+        foreach ($allUsersData as $u) $userNames[$u["id"]] = $u["name"];
+    }
 
-        $userNames = [];
-        if ($allUsersData) {
-            foreach ($allUsersData as $u) $userNames[$u["id"]] = $u["name"];
-        }
+    $projectNames = [];
+    if ($allProjectsData) {
+        foreach ($allProjectsData as $p) $projectNames[$p["id"]] = $p["name"];
+    }
 
-        $projectNames = [];
-        if ($allProjectsData) {
-            foreach ($allProjectsData as $p) $projectNames[$p["id"]] = $p["name"];
-        }
+    foreach ($team['users'] as $userId) {
+        $userName = $userNames[$userId] ?? "Unknown ($userId)";
+        $page = 1;
 
-        foreach ($team['users'] as $userId) {
-            $userName = $userNames[$userId] ?? "Unknown ($userId)";
-            $page = 1;
+        while (true) {
+            $entries = clockifyGetCached(
+                "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
+                "?page-size=200&page=$page&start=$startISO&end=$endISO"
+            );
+            if (!$entries || count($entries) === 0) break;
 
-            while (true) {
-                $entries = clockifyGet(
-                    "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
-                    "?page-size=200&page=$page&start=$startISO&end=$endISO"
-                );
-                if (!$entries || count($entries) === 0) break;
+            foreach ($entries as $e) {
+                if (!isset($e["timeInterval"]["duration"])) continue;
+                $hours = clockifyDurationToHours($e["timeInterval"]["duration"]);
+                $projectId = $e["projectId"] ?? "NO_PROJECT";
+                $projectLabel = $projectNames[$projectId] ?? "No Project";
 
-                foreach ($entries as $e) {
-                    if (!isset($e["timeInterval"]["duration"])) continue;
-                    $hours = clockifyDurationToHours($e["timeInterval"]["duration"]);
-                    $projectId = $e["projectId"] ?? "NO_PROJECT";
-                    $projectLabel = $projectNames[$projectId] ?? "No Project";
-
-                    $results[$userName][$projectLabel] = ($results[$userName][$projectLabel] ?? 0) + $hours;
-                    $projectSummary[$projectLabel] = ($projectSummary[$projectLabel] ?? 0) + $hours;
-                }
-                $page++;
+                $results[$userName][$projectLabel] = ($results[$userName][$projectLabel] ?? 0) + $hours;
+                $projectSummary[$projectLabel] = ($projectSummary[$projectLabel] ?? 0) + $hours;
             }
+            $page++;
         }
-
-        saveCache($cacheFile, [
-            'results' => $results,
-            'projectSummary' => $projectSummary
-        ]);
     }
 }
 

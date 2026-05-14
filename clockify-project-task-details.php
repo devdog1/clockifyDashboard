@@ -8,7 +8,7 @@ function getProjects()
 {
     global $workspaceId;
     $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=5000";
-    $data = clockifyGet($url);
+    $data = clockifyGetCached($url);
     if (!is_array($data)) return [];
 
     $out = [];
@@ -27,7 +27,7 @@ function getUsers()
 {
     global $workspaceId;
     $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/users?page-size=5000";
-    $data = clockifyGet($url);
+    $data = clockifyGetCached($url);
     if (!is_array($data)) return [];
 
     $out = [];
@@ -53,7 +53,7 @@ function getProjectEntries($projectId, $users)
                 "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
                 "?project=$projectId&page=$page&page-size=500";
 
-            $data = clockifyGet($url);
+            $data = clockifyGetCached($url);
             if (!is_array($data) || empty($data)) break;
 
             foreach ($data as $entry) {
