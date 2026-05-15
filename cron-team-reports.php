@@ -69,14 +69,20 @@ ob_start();
         <div class="section-title">Last Week Summary (<?= $lastMonday->format('M d') ?> - <?= $lastFriday->format('M d') ?>)</div>
         <?php
         $weekly = getTeamReportData($team, $lastMonday, $lastFriday);
+        echo "<h3>Project Totals</h3>";
         renderTable($weekly);
+        echo "<h3>User Breakdown</h3>";
+        renderUserTable($weekly);
         ?>
 
         <!-- FYTD Summary -->
         <div class="section-title">Fiscal Year to Date (<?= $fyStart->format('Y-m-d') ?> - <?= $fyEnd->format('Y-m-d') ?>)</div>
         <?php
         $fytd = getTeamReportData($team, $fyStart, $fyEnd);
+        echo "<h3>Project Totals</h3>";
         renderTable($fytd);
+        echo "<h3>User Breakdown</h3>";
+        renderUserTable($fytd);
         ?>
         <hr>
     <?php endforeach; ?>
@@ -104,6 +110,41 @@ function renderTable($data) {
                     <td><?= htmlspecialchars($proj) ?></td>
                     <td style="text-align: right;"><?= number_format($hours, 2) ?></td>
                 </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php
+}
+
+function renderUserTable($data) {
+    if (empty($data['results'])) {
+        return;
+    }
+    ?>
+    <table>
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Project</th>
+                <th style="text-align: right;">Hours</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($data['results'] as $user => $userProjects): ?>
+                <?php
+                $first = true;
+                $rowCount = count($userProjects);
+                foreach ($userProjects as $proj => $hours):
+                ?>
+                    <tr>
+                        <?php if ($first): ?>
+                            <td rowspan="<?= $rowCount ?>"><?= htmlspecialchars($user) ?></td>
+                            <?php $first = false; ?>
+                        <?php endif; ?>
+                        <td><?= htmlspecialchars($proj) ?></td>
+                        <td style="text-align: right;"><?= number_format($hours, 2) ?></td>
+                    </tr>
+                <?php endforeach; ?>
             <?php endforeach; ?>
         </tbody>
     </table>
