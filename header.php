@@ -40,6 +40,9 @@
                     <li class="nav-item">
                         <a class="nav-link" href="manage-teams.php">Manage Teams</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage-settings.php">Settings</a>
+                    </li>
                 </ul>
             </div>
         </div>

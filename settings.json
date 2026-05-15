@@ -1,0 +1,6 @@
+{
+    "reports_enabled": false,
+    "recipients": [
+        "test@example.com"
+    ]
+}

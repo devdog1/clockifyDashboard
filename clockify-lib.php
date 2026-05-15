@@ -171,6 +171,70 @@ function resolveSelectedPeriod($selectedKey, $periodOptions) {
     return $periodOptions['weeks'][$firstWeekKey];
 }
 
+function loadSettings() {
+    $file = __DIR__ . '/settings.json';
+    if (!file_exists($file)) {
+        return ['reports_enabled' => true, 'recipients' => []];
+    }
+    return json_decode(file_get_contents($file), true) ?: ['reports_enabled' => true, 'recipients' => []];
+}
+
+function saveSettings($settings) {
+    $file = __DIR__ . '/settings.json';
+    file_put_contents($file, json_encode($settings, JSON_PRETTY_PRINT));
+}
+
+function getTeamReportData($team, $start, $end) {
+    global $workspaceId;
+    $results = [];
+    $projectSummary = [];
+
+    $startISO = $start->format("Y-m-d\TH:i:s\Z");
+    $endISO   = $end->format("Y-m-d\TH:i:s\Z");
+
+    $allUsersData = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
+    $allProjectsData = clockifyGetCached("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
+
+    $userNames = [];
+    if ($allUsersData) {
+        foreach ($allUsersData as $u) $userNames[$u["id"]] = $u["name"];
+    }
+
+    $projectNames = [];
+    if ($allProjectsData) {
+        foreach ($allProjectsData as $p) $projectNames[$p["id"]] = $p["name"];
+    }
+
+    foreach ($team['users'] as $userId) {
+        $userName = $userNames[$userId] ?? "Unknown ($userId)";
+        $page = 1;
+
+        while (true) {
+            $entries = clockifyGetCached(
+                "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
+                "?page-size=200&page=$page&start=$startISO&end=$endISO"
+            );
+            if (!$entries || count($entries) === 0) break;
+
+            foreach ($entries as $e) {
+                if (!isset($e["timeInterval"]["duration"])) continue;
+                $hours = clockifyDurationToHours($e["timeInterval"]["duration"]);
+                $projectId = $e["projectId"] ?? "NO_PROJECT";
+                $projectLabel = $projectNames[$projectId] ?? "No Project";
+
+                $results[$userName][$projectLabel] = ($results[$userName][$projectLabel] ?? 0) + $hours;
+                $projectSummary[$projectLabel] = ($projectSummary[$projectLabel] ?? 0) + $hours;
+            }
+            $page++;
+        }
+    }
+
+    return [
+        'results' => $results,
+        'projectSummary' => $projectSummary
+    ];
+}
+
 function clockifyDurationToHours($duration) {
     if (!$duration) return 0;
 

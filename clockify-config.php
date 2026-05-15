@@ -8,3 +8,6 @@
 
 $apiKey      = "<apikey>";
 $workspaceId = "<workspaceId>";
+
+// Email configuration for automated reports
+$reportRecipientEmail = "admin@example.com";
