@@ -29,11 +29,12 @@ $teams = json_decode(file_get_contents($teamsFile), true) ?: [];
 //---------------------------------------------------------------
 // Calculate Date Ranges
 //---------------------------------------------------------------
-// Last Week (Mon-Fri)
+// Last Week (Mon-Sun)
 $lastMonday = new DateTime("last monday", new DateTimeZone("UTC"));
-$lastFriday = clone $lastMonday;
-$lastFriday->modify("+4 days");
-$lastFriday->setTime(23, 59, 59);
+$lastMonday->setTime(0, 0, 0);
+$lastSunday = clone $lastMonday;
+$lastSunday->modify("+6 days");
+$lastSunday->setTime(23, 59, 59);
 
 // FYTD (Sept 1 to today)
 $fyBoundaries = getFiscalYearBoundaries();
@@ -66,9 +67,9 @@ ob_start();
         <h2>Team: <?= htmlspecialchars($team['name']) ?></h2>
 
         <!-- Weekly Summary -->
-        <div class="section-title">Last Week Summary (<?= $lastMonday->format('M d') ?> - <?= $lastFriday->format('M d') ?>)</div>
+        <div class="section-title">Last Week Summary (<?= $lastMonday->format('M d') ?> - <?= $lastSunday->format('M d') ?>)</div>
         <?php
-        $weekly = getTeamReportData($team, $lastMonday, $lastFriday);
+        $weekly = getTeamReportData($team, $lastMonday, $lastSunday);
         echo "<h3>Project Totals</h3>";
         renderTable($weekly);
         echo "<h3>User Breakdown</h3>";
