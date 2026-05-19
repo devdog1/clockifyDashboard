@@ -30,11 +30,13 @@ $teams = json_decode(file_get_contents($teamsFile), true) ?: [];
 // Calculate Date Ranges
 //---------------------------------------------------------------
 // Last Week (Mon-Sun)
-$lastMonday = new DateTime("last monday", new DateTimeZone("UTC"));
-$lastMonday->setTime(0, 0, 0);
-$lastSunday = clone $lastMonday;
-$lastSunday->modify("+6 days");
+// If run on Monday May 18, we want May 11 00:00 to May 17 23:59
+$lastSunday = new DateTime("last sunday", new DateTimeZone("UTC"));
 $lastSunday->setTime(23, 59, 59);
+
+$lastMonday = clone $lastSunday;
+$lastMonday->modify("last monday");
+$lastMonday->setTime(0, 0, 0);
 
 // FYTD (Sept 1 to today)
 $fyBoundaries = getFiscalYearBoundaries();
