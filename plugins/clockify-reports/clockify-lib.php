@@ -1,6 +1,6 @@
 <?php
 /**
- * Clockify Library - Plugin Edition
+ * Clockify Library - Plugin Edition with MySQL DB Settings and Caching
  */
 
 if (!function_exists('clockify_get_plugin_db')) {
@@ -24,11 +24,22 @@ if (!function_exists('clockify_get_plugin_db')) {
         if (class_exists('PluginDatabase')) {
             try {
                 $instance = new PluginDatabase('clockify-reports');
+
+                // Settings table
                 $instance->createTable('settings', "
                     setting_key VARCHAR(100) PRIMARY KEY,
                     setting_value TEXT NOT NULL,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ");
+
+                // DB Cache table
+                $instance->createTable('cache', "
+                    cache_key VARCHAR(150) PRIMARY KEY,
+                    cache_data LONGTEXT NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ");
+
                 $pdb = $instance;
                 return $pdb;
             } catch (Exception $e) {
@@ -114,13 +125,7 @@ if (!function_exists('getClockifyWorkspaceId')) {
     }
 }
 
-$cacheDir = __DIR__ . "/cache";
 $cacheTTL = (int) clockify_get_setting('cache_ttl', 60 * 60 * 12);
-$cacheLog = $cacheDir . "/cache.log";
-
-if (!file_exists($cacheDir)) {
-    @mkdir($cacheDir, 0755, true);
-}
 
 if (!function_exists('clockifyGet')) {
     function clockifyGet($url) {
@@ -151,28 +156,78 @@ if (!function_exists('clockifyGet')) {
 }
 
 if (!function_exists('loadCache')) {
-    function loadCache($file, $ttl) {
-        if (file_exists($file) && (time() - filemtime($file) <= $ttl)) {
-            return json_decode(file_get_contents($file), true);
+    function loadCache($key, $ttl = null) {
+        if ($ttl === null) {
+            $ttl = (int) clockify_get_setting('cache_ttl', 60 * 60 * 12);
+        }
+        $pdb = clockify_get_plugin_db();
+        if ($pdb) {
+            try {
+                $tableName = $pdb->getTableName('cache');
+                $stmt = $pdb->query("SELECT cache_data, expires_at FROM {$tableName} WHERE cache_key = ?", [$key]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    if (strtotime($row['expires_at']) > time()) {
+                        return json_decode($row['cache_data'], true);
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("Clockify loadCache error for key {$key}: " . $e->getMessage());
+            }
         }
         return false;
     }
 }
 
 if (!function_exists('saveCache')) {
-    function saveCache($file, $data) {
-        file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+    function saveCache($key, $data, $ttl = null) {
+        if ($ttl === null) {
+            $ttl = (int) clockify_get_setting('cache_ttl', 60 * 60 * 12);
+        }
+        $pdb = clockify_get_plugin_db();
+        if ($pdb) {
+            try {
+                $tableName = $pdb->getTableName('cache');
+                $jsonData = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                $expiresAt = date('Y-m-d H:i:s', time() + (int)$ttl);
+
+                $pdb->query("
+                    INSERT INTO {$tableName} (cache_key, cache_data, expires_at)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE cache_data = ?, expires_at = ?
+                ", [$key, $jsonData, $expiresAt, $jsonData, $expiresAt]);
+                return true;
+            } catch (Exception $e) {
+                error_log("Clockify saveCache error for key {$key}: " . $e->getMessage());
+            }
+        }
+        return false;
+    }
+}
+
+if (!function_exists('clearClockifyCache')) {
+    function clearClockifyCache() {
+        $pdb = clockify_get_plugin_db();
+        if ($pdb) {
+            try {
+                $tableName = $pdb->getTableName('cache');
+                $pdb->query("DELETE FROM {$tableName}");
+                return true;
+            } catch (Exception $e) {
+                error_log("Clockify clearClockifyCache error: " . $e->getMessage());
+            }
+        }
+        return false;
     }
 }
 
 if (!function_exists('logCache')) {
     function logCache($msg) {
-        global $cacheLog;
-        if (!isset($cacheLog)) {
-            $cacheLog = __DIR__ . "/cache/cache.log";
+        if (function_exists('log_action')) {
+            log_action('CLOCKIFY_CACHE_EVENT', ['message' => $msg]);
+        } else {
+            error_log("[Clockify Cache] " . $msg);
         }
-        $time = date("Y-m-d H:i:s");
-        @file_put_contents($cacheLog, "[$time] $msg\n", FILE_APPEND);
     }
 }
 

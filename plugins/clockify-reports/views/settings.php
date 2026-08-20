@@ -30,21 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $message = 'Clockify settings saved successfully to the plugin database table!';
     } elseif (isset($_POST['clear_cache'])) {
-        $cacheDir = __DIR__ . '/../cache';
-        $files = glob($cacheDir . '/*.json');
-        $cleared = 0;
-        if ($files) {
-            foreach ($files as $f) {
-                if (is_file($f)) {
-                    @unlink($f);
-                    $cleared++;
-                }
-            }
+        if (function_exists('clearClockifyCache')) {
+            clearClockifyCache();
         }
         if (function_exists('log_action')) {
-            log_action('CLOCKIFY_CACHE_CLEAR', ['cleared_files' => $cleared]);
+            log_action('CLOCKIFY_CACHE_CLEAR', ['status' => 'cleared']);
         }
-        $message = "Cache cleared ($cleared files removed).";
+        $message = "Database report cache cleared successfully.";
     }
 }
 
@@ -58,7 +50,7 @@ $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h2><i class="fa-solid fa-gear text-primary me-2"></i>Clockify Settings</h2>
-                <p class="text-muted">Manage Clockify API integration settings. All settings are stored securely in the plugin's isolated settings database table (<code>plug_clockify_reports_settings</code>).</p>
+                <p class="text-muted">Manage Clockify API integration settings. All settings and cached reports are stored securely in the plugin's isolated database tables (<code>plug_clockify_reports_settings</code> and <code>plug_clockify_reports_cache</code>).</p>
             </div>
             <div>
                 <a href="index.php?route=clockify_dashboard" class="btn btn-outline-secondary">
@@ -113,7 +105,7 @@ $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
                         <label for="cache_ttl" class="form-label fw-bold">Cache Duration (Seconds)</label>
                         <input type="number" class="form-control" id="cache_ttl" name="cache_ttl"
                                value="<?= htmlspecialchars($currentCacheTTL) ?>" min="60" step="60">
-                        <div class="form-text">Default: 43200 seconds (12 hours). Reports use local caching to minimize Clockify API calls.</div>
+                        <div class="form-text">Default: 43200 seconds (12 hours). Reports use database caching to minimize Clockify API calls.</div>
                     </div>
 
                     <div class="d-flex justify-content-between align-items-center">
@@ -132,15 +124,17 @@ $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
                 <i class="fa-solid fa-database me-2"></i>Storage Details
             </div>
             <div class="card-body">
-                <p class="small text-muted mb-2"><strong>Database Table:</strong></p>
+                <p class="small text-muted mb-1"><strong>Settings Table:</strong></p>
                 <code class="d-block mb-3 p-2 bg-light border rounded">plug_clockify_reports_settings</code>
-                <p class="small text-muted mb-3">Settings are safely isolated inside your portal database table structure according to framework specifications.</p>
+                <p class="small text-muted mb-1"><strong>Cache Table:</strong></p>
+                <code class="d-block mb-3 p-2 bg-light border rounded">plug_clockify_reports_cache</code>
+                <p class="small text-muted mb-3">All settings and cache entries are safely isolated inside your portal database table structure.</p>
                 <hr>
                 <h6 class="fw-bold mb-2">Cache Actions</h6>
                 <form method="POST" action="index.php?route=clockify_settings">
                     <?php if (function_exists('csrf_field')) csrf_field(); ?>
                     <button type="submit" name="clear_cache" class="btn btn-outline-warning w-100 btn-sm">
-                        <i class="fa-solid fa-trash me-1"></i> Clear Local Report Cache
+                        <i class="fa-solid fa-trash me-1"></i> Clear Database Report Cache
                     </button>
                 </form>
             </div>

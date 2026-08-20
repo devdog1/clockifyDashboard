@@ -5,6 +5,7 @@ if (!defined('CLOCKIFY_PLUGIN_DIR')) {
 
 $apiKey = clockify_get_setting('api_key', '');
 $workspaceId = clockify_get_setting('workspace_id', '');
+$cacheTTL = (int) clockify_get_setting('cache_ttl', 43200);
 
 if (empty($apiKey) || empty($workspaceId)) {
     echo '<div class="alert alert-warning border-start border-4 border-warning shadow-sm my-4">
@@ -25,11 +26,11 @@ if (!array_key_exists($selectedWeek, $weekOptions)) {
 $weekStart = $weekOptions[$selectedWeek]["start"];
 $weekEnd   = $weekOptions[$selectedWeek]["end"];
 
-$cacheFile = "$cacheDir/clockify_project_summary_{$selectedWeek}.json";
-$fyCacheFile = "$cacheDir/clockify_project_fy_summary.json";
+$cacheKey = "clockify_project_summary_{$selectedWeek}";
+$fyCacheKey = "clockify_project_fy_summary";
 
-$cachedWeekly = loadCache($cacheFile, $cacheTTL);
-$cachedFY     = loadCache($fyCacheFile, $cacheTTL);
+$cachedWeekly = loadCache($cacheKey, $cacheTTL);
+$cachedFY     = loadCache($fyCacheKey, $cacheTTL);
 
 if ($cachedWeekly !== false && $cachedFY !== false) {
     logCache("CACHE HIT: Weekly + FY Summary");
@@ -91,8 +92,8 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
         }
     }
 
-    saveCache($cacheFile, ["weekly" => $weeklyResults]);
-    saveCache($fyCacheFile, ["fy" => $fyResults]);
+    saveCache($cacheKey, ["weekly" => $weeklyResults], $cacheTTL);
+    saveCache($fyCacheKey, ["fy" => $fyResults], $cacheTTL);
 }
 ?>
 
@@ -188,5 +189,5 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
         </div>
     </div>
 
-    <p class="text-muted mt-2 small"><em>Cache activity logged to <code>cache/cache.log</code></em></p>
+    <p class="text-muted mt-2 small"><em>Cache data stored in plugin database table <code>plug_clockify_reports_cache</code></em></p>
 </div>

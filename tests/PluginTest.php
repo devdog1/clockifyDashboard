@@ -52,15 +52,26 @@ class PluginDatabase {
 
     public function createTable($table_name, $columns_sql) {
         $full = $this->getTableName($table_name);
-        $sql = "CREATE TABLE IF NOT EXISTS {$full} (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
+        if (strpos($table_name, 'cache') !== false) {
+            $sql = "CREATE TABLE IF NOT EXISTS {$full} (cache_key TEXT PRIMARY KEY, cache_data TEXT NOT NULL, expires_at DATETIME NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
+        } else {
+            $sql = "CREATE TABLE IF NOT EXISTS {$full} (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
+        }
         $this->pdo->exec($sql);
         return true;
     }
 
     public function query($sql, $params = []) {
         if (strpos($sql, 'ON DUPLICATE KEY UPDATE') !== false) {
-            $table = $this->getTableName('settings');
-            $sql = "INSERT INTO {$table} (setting_key, setting_value) VALUES (?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = ?";
+            if (strpos($sql, 'cache') !== false) {
+                $table = $this->getTableName('cache');
+                $sql = "INSERT INTO {$table} (cache_key, cache_data, expires_at) VALUES (?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET cache_data = excluded.cache_data, expires_at = excluded.expires_at";
+                $params = array_slice($params, 0, 3);
+            } else {
+                $table = $this->getTableName('settings');
+                $sql = "INSERT INTO {$table} (setting_key, setting_value) VALUES (?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value";
+                $params = array_slice($params, 0, 2);
+            }
         }
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
@@ -102,11 +113,27 @@ clockify_set_setting('workspace_id', 'ws_test_456');
 assert(getClockifyWorkspaceId() === 'ws_test_456', 'getClockifyWorkspaceId should return ws_test_456');
 echo "✓ Workspace ID setting test passed.\n";
 
-// Test 5: Require plugin.php without pre-existing add_action() function
+// Test 5: DB Cache Save & Load
+$cacheKey = 'test_report_cache';
+$sampleData = ['user1' => ['Project A' => 10.5]];
+$saved = saveCache($cacheKey, $sampleData, 3600);
+assert($saved === true, 'saveCache should return true');
+
+$cachedData = loadCache($cacheKey);
+assert($cachedData !== false, 'loadCache should return cached array');
+assert($cachedData['user1']['Project A'] === 10.5, 'Cached data content should match');
+echo "✓ DB Cache save and load test passed.\n";
+
+// Test 6: DB Cache Clearing
+clearClockifyCache();
+assert(loadCache($cacheKey) === false, 'loadCache should return false after clearing cache');
+echo "✓ DB Cache clearing test passed.\n";
+
+// Test 7: Require plugin.php without pre-existing add_action() function
 require_once __DIR__ . '/../plugins/clockify-reports/plugin.php';
 $pm = PluginManager::getInstance();
 assert(isset($pm->routes['clockify_dashboard']), 'clockify_dashboard route should be registered');
 assert(isset($pm->routes['clockify_settings']), 'clockify_settings route should be registered');
-echo "✓ plugin.php inclusion without pre-existing add_action() function test passed.\n";
+echo "✓ plugin.php inclusion test passed.\n";
 
 echo "\nALL TESTS PASSED SUCCESSFULLY!\n";
