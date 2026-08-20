@@ -29,6 +29,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $message = 'Clockify settings saved successfully to the plugin database table!';
+    } elseif (isset($_POST['update_reports_status'])) {
+        $enabled = isset($_POST['reports_enabled']) ? '1' : '0';
+        clockify_set_setting('reports_enabled', $enabled);
+        if (function_exists('log_action')) {
+            log_action('CLOCKIFY_REPORTS_STATUS_UPDATE', ['enabled' => $enabled]);
+        }
+        $message = "Automated email reports " . ($enabled === '1' ? 'enabled' : 'disabled') . ".";
+    } elseif (isset($_POST['add_recipient'])) {
+        $email = trim($_POST['email'] ?? '');
+        if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $recipientsRaw = clockify_get_setting('recipients', '[]');
+            $recipients = json_decode($recipientsRaw, true) ?: [];
+            if (!in_array($email, $recipients)) {
+                $recipients[] = $email;
+                clockify_set_setting('recipients', json_encode($recipients));
+                $message = "Recipient " . htmlspecialchars($email) . " added.";
+            } else {
+                $error = "Recipient " . htmlspecialchars($email) . " already exists.";
+            }
+        } else {
+            $error = "Invalid email address.";
+        }
+    } elseif (isset($_POST['remove_recipient'])) {
+        $email = trim($_POST['email'] ?? '');
+        $recipientsRaw = clockify_get_setting('recipients', '[]');
+        $recipients = json_decode($recipientsRaw, true) ?: [];
+        if (($idx = array_search($email, $recipients)) !== false) {
+            array_splice($recipients, $idx, 1);
+            clockify_set_setting('recipients', json_encode($recipients));
+            $message = "Recipient " . htmlspecialchars($email) . " removed.";
+        }
     } elseif (isset($_POST['clear_cache'])) {
         if (function_exists('clearClockifyCache')) {
             clearClockifyCache();
@@ -43,6 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $currentApiKey = clockify_get_setting('api_key', '');
 $currentWorkspaceId = clockify_get_setting('workspace_id', '');
 $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
+$reportsEnabled = clockify_get_setting('reports_enabled', '1') === '1';
+$recipientsRaw = clockify_get_setting('recipients', '[]');
+$recipients = json_decode($recipientsRaw, true) ?: [];
 ?>
 
 <div class="row mb-4">
@@ -50,7 +84,7 @@ $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h2><i class="fa-solid fa-gear text-primary me-2"></i>Clockify Settings</h2>
-                <p class="text-muted">Manage Clockify API integration settings. All settings and cached reports are stored securely in the plugin's isolated database tables (<code>plug_clockify_reports_settings</code> and <code>plug_clockify_reports_cache</code>).</p>
+                <p class="text-muted">Manage Clockify API integration settings, automated email report schedules, and recipients. Stored securely in database table <code>plug_clockify_reports_settings</code>.</p>
             </div>
             <div>
                 <a href="index.php?route=clockify_dashboard" class="btn btn-outline-secondary">
@@ -76,7 +110,7 @@ $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
 <?php endif; ?>
 
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-md-7">
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-dark text-white">
                 <i class="fa-solid fa-key me-2"></i>API Configuration
@@ -108,27 +142,98 @@ $currentCacheTTL = clockify_get_setting('cache_ttl', '43200');
                         <div class="form-text">Default: 43200 seconds (12 hours). Reports use database caching to minimize Clockify API calls.</div>
                     </div>
 
-                    <div class="d-flex justify-content-between align-items-center">
-                        <button type="submit" name="save_settings" class="btn btn-primary">
-                            <i class="fa-solid fa-floppy-disk me-1"></i> Save Settings
+                    <button type="submit" name="save_settings" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk me-1"></i> Save API Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Automated Report Recipients -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <strong><i class="fa-solid fa-envelope me-2"></i>Automated Report Email Recipients</strong>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="index.php?route=clockify_settings" class="row g-2 mb-4">
+                    <?php if (function_exists('csrf_field')) csrf_field(); ?>
+                    <div class="col-md-8">
+                        <input type="email" name="email" class="form-control" placeholder="user@example.com" required>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" name="add_recipient" class="btn btn-success w-100">
+                            <i class="fa-solid fa-user-plus me-1"></i> Add Recipient
                         </button>
                     </div>
                 </form>
+
+                <div class="table-responsive border rounded">
+                    <table class="table table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Recipient Email</th>
+                                <th class="text-end" style="width: 25%;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($recipients)): ?>
+                                <tr><td colspan="2" class="text-center py-3 text-muted">No report email recipients configured.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($recipients as $email): ?>
+                                    <tr>
+                                        <td><i class="fa-solid fa-envelope me-2 text-secondary"></i><?= htmlspecialchars($email) ?></td>
+                                        <td class="text-end">
+                                            <form method="POST" action="index.php?route=clockify_settings" style="display:inline;" onsubmit="return confirm('Remove this recipient?');">
+                                                <?php if (function_exists('csrf_field')) csrf_field(); ?>
+                                                <input type="hidden" name="email" value="<?= htmlspecialchars($email) ?>">
+                                                <button type="submit" name="remove_recipient" class="btn btn-danger btn-sm">
+                                                    <i class="fa-solid fa-trash me-1"></i> Remove
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md-5">
+        <!-- Automated Report Status -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-secondary text-white">
+                <i class="fa-solid fa-paper-plane me-2"></i>Automated Cron Reports
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="index.php?route=clockify_settings">
+                    <?php if (function_exists('csrf_field')) csrf_field(); ?>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="reports_enabled" name="reports_enabled" <?= $reportsEnabled ? 'checked' : '' ?>>
+                        <label class="form-check-label fw-bold" for="reports_enabled">Enable Weekly Cron Email Reports</label>
+                    </div>
+                    <p class="small text-muted mb-3">When enabled, running <code>cron-team-reports.php</code> via CLI or task scheduler sends automated summary reports to all recipients.</p>
+                    <button type="submit" name="update_reports_status" class="btn btn-secondary btn-sm">
+                        <i class="fa-solid fa-sliders me-1"></i> Save Report Status
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Storage Details & Cache -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
                 <i class="fa-solid fa-database me-2"></i>Storage Details
             </div>
             <div class="card-body">
                 <p class="small text-muted mb-1"><strong>Settings Table:</strong></p>
-                <code class="d-block mb-3 p-2 bg-light border rounded">plug_clockify_reports_settings</code>
+                <code class="d-block mb-2 p-2 bg-light border rounded">plug_clockify_reports_settings</code>
+                <p class="small text-muted mb-1"><strong>Teams Table:</strong></p>
+                <code class="d-block mb-2 p-2 bg-light border rounded">plug_clockify_reports_teams</code>
                 <p class="small text-muted mb-1"><strong>Cache Table:</strong></p>
                 <code class="d-block mb-3 p-2 bg-light border rounded">plug_clockify_reports_cache</code>
-                <p class="small text-muted mb-3">All settings and cache entries are safely isolated inside your portal database table structure.</p>
                 <hr>
                 <h6 class="fw-bold mb-2">Cache Actions</h6>
                 <form method="POST" action="index.php?route=clockify_settings">

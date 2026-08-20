@@ -54,9 +54,18 @@ class PluginDatabase {
         $full = $this->getTableName($table_name);
         if (strpos($table_name, 'cache') !== false) {
             $sql = "CREATE TABLE IF NOT EXISTS {$full} (cache_key TEXT PRIMARY KEY, cache_data TEXT NOT NULL, expires_at DATETIME NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
+        } elseif (strpos($table_name, 'teams') !== false) {
+            $sql = "CREATE TABLE IF NOT EXISTS {$full} (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, members TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
         } else {
             $sql = "CREATE TABLE IF NOT EXISTS {$full} (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
         }
+        $this->pdo->exec($sql);
+        return true;
+    }
+
+    public function dropTable($table_name) {
+        $full = $this->getTableName($table_name);
+        $sql = "DROP TABLE IF EXISTS {$full}";
         $this->pdo->exec($sql);
         return true;
     }
@@ -98,7 +107,8 @@ assert(!empty($weeks), 'Fiscal year weeks should not be empty');
 assert(is_array($weeks), 'Fiscal year weeks should be an array');
 echo "✓ getFiscalYearWeeks test passed (" . count($weeks) . " weeks generated).\n";
 
-// Test 3: Setting GET/SET via PluginDatabase
+// Test 3: Table Installation & Setting GET/SET via PluginDatabase
+assert(clockify_install_tables() === true, 'clockify_install_tables should return true');
 $testKey = 'api_key';
 $testValue = 'test_secret_api_key_123';
 $setResult = clockify_set_setting($testKey, $testValue);
@@ -106,7 +116,7 @@ assert($setResult === true, 'clockify_set_setting should return true');
 
 $retrievedValue = clockify_get_setting($testKey);
 assert($retrievedValue === $testValue, "Retrieved value '{$retrievedValue}' should match '{$testValue}'");
-echo "✓ clockify_set_setting and clockify_get_setting test passed.\n";
+echo "✓ Table installation and settings test passed.\n";
 
 // Test 4: Workspace ID Setting
 clockify_set_setting('workspace_id', 'ws_test_456');
@@ -129,11 +139,32 @@ clearClockifyCache();
 assert(loadCache($cacheKey) === false, 'loadCache should return false after clearing cache');
 echo "✓ DB Cache clearing test passed.\n";
 
-// Test 7: Require plugin.php without pre-existing add_action() function
+// Test 7: Teams Save & Get
+$sampleTeams = [
+    [
+        'name' => 'Engineering',
+        'users' => ['u100', 'u101']
+    ]
+];
+assert(clockify_save_teams($sampleTeams) === true, 'clockify_save_teams should return true');
+$loadedTeams = clockify_get_teams();
+assert(count($loadedTeams) === 1, 'Should load 1 team from DB');
+assert($loadedTeams[0]['name'] === 'Engineering', 'Team name should match');
+assert($loadedTeams[0]['users'] === ['u100', 'u101'], 'Team members should match');
+echo "✓ Team creation, save, and load test passed.\n";
+
+// Test 8: Table Uninstallation
+assert(clockify_uninstall_tables() === true, 'clockify_uninstall_tables should return true');
+echo "✓ Table uninstallation test passed.\n";
+
+// Test 9: Require plugin.php without pre-existing add_action() function
 require_once __DIR__ . '/../plugins/clockify-reports/plugin.php';
 $pm = PluginManager::getInstance();
 assert(isset($pm->routes['clockify_dashboard']), 'clockify_dashboard route should be registered');
+assert(isset($pm->routes['clockify_manage_teams']), 'clockify_manage_teams route should be registered');
 assert(isset($pm->routes['clockify_settings']), 'clockify_settings route should be registered');
+assert(isset($pm->actions['plugin_activate_clockify-reports']), 'Activation hook should be registered');
+assert(isset($pm->actions['plugin_deactivate_clockify-reports']), 'Deactivation hook should be registered');
 echo "✓ plugin.php inclusion test passed.\n";
 
 echo "\nALL TESTS PASSED SUCCESSFULLY!\n";
