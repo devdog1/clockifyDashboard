@@ -3,6 +3,32 @@
  * Test suite for Clockify Reports Plugin
  */
 
+class PluginManager {
+    private static $instance = null;
+    public $actions = [];
+    public $filters = [];
+    public $routes = [];
+
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    public function addAction($hook, $callback, $priority = 10) {
+        $this->actions[$hook][] = $callback;
+    }
+
+    public function addFilter($hook, $callback, $priority = 10) {
+        $this->filters[$hook][] = $callback;
+    }
+
+    public function registerRoute($route, $callback) {
+        $this->routes[$route] = $callback;
+    }
+}
+
 class PluginDatabase {
     private $plugin_slug;
     private $prefix;
@@ -32,7 +58,6 @@ class PluginDatabase {
     }
 
     public function query($sql, $params = []) {
-        // SQLite query adaptation for testing
         if (strpos($sql, 'ON DUPLICATE KEY UPDATE') !== false) {
             $table = $this->getTableName('settings');
             $sql = "INSERT INTO {$table} (setting_key, setting_value) VALUES (?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = ?";
@@ -76,5 +101,12 @@ echo "✓ clockify_set_setting and clockify_get_setting test passed.\n";
 clockify_set_setting('workspace_id', 'ws_test_456');
 assert(getClockifyWorkspaceId() === 'ws_test_456', 'getClockifyWorkspaceId should return ws_test_456');
 echo "✓ Workspace ID setting test passed.\n";
+
+// Test 5: Require plugin.php without pre-existing add_action() function
+require_once __DIR__ . '/../plugins/clockify-reports/plugin.php';
+$pm = PluginManager::getInstance();
+assert(isset($pm->routes['clockify_dashboard']), 'clockify_dashboard route should be registered');
+assert(isset($pm->routes['clockify_settings']), 'clockify_settings route should be registered');
+echo "✓ plugin.php inclusion without pre-existing add_action() function test passed.\n";
 
 echo "\nALL TESTS PASSED SUCCESSFULLY!\n";

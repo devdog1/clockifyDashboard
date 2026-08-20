@@ -8,7 +8,7 @@ Permissions: view_clockify_reports, manage_clockify_settings
 */
 
 if (!class_exists('PluginManager')) {
-    // If loaded standalone outside zzz5 framework framework context
+    // If loaded outside zzz5 framework context
     return;
 }
 
@@ -16,15 +16,34 @@ if (!defined('CLOCKIFY_PLUGIN_DIR')) {
     define('CLOCKIFY_PLUGIN_DIR', __DIR__);
 }
 
+// Define helper wrappers if functions.php was not loaded prior to plugin inclusion
+if (!function_exists('add_action')) {
+    function add_action($hook, $callback, $priority = 10) {
+        PluginManager::getInstance()->addAction($hook, $callback, $priority);
+    }
+}
+if (!function_exists('add_filter')) {
+    function add_filter($hook, $callback, $priority = 10) {
+        PluginManager::getInstance()->addFilter($hook, $callback, $priority);
+    }
+}
+if (!function_exists('register_route')) {
+    function register_route($route_name, $callback) {
+        PluginManager::getInstance()->registerRoute($route_name, $callback);
+    }
+}
+
 require_once __DIR__ . '/clockify-lib.php';
 
+$pm = PluginManager::getInstance();
+
 // Register Plugin Activation Hook to initialize DB table
-add_action('plugin_activate_clockify-reports', function() {
+$pm->addAction('plugin_activate_clockify-reports', function() {
     clockify_get_plugin_db();
 });
 
 // Register Navigation Links
-add_filter('theme_nav_links', function ($links) {
+$pm->addFilter('theme_nav_links', function ($links) {
     if (function_exists('has_permission') && !has_permission('clockify_reports_view_clockify_reports') && !has_permission('view_dashboard')) {
         return $links;
     }
@@ -70,7 +89,7 @@ add_filter('theme_nav_links', function ($links) {
 });
 
 // Register Home Screen Dashboard Widget
-add_action('index_dashboard_widgets', function ($userContext) {
+$pm->addAction('index_dashboard_widgets', function ($userContext) {
     if (function_exists('has_permission') && !has_permission('clockify_reports_view_clockify_reports') && !has_permission('view_dashboard')) {
         return;
     }
@@ -99,7 +118,7 @@ add_action('index_dashboard_widgets', function ($userContext) {
 });
 
 // Register Extensible Routes
-register_route('clockify_dashboard', function() {
+$pm->registerRoute('clockify_dashboard', function() {
     if (function_exists('has_permission') && !has_permission('clockify_reports_view_clockify_reports') && !has_permission('view_dashboard')) {
         echo '<div class="alert alert-danger"><i class="fa-solid fa-lock me-2"></i>Access Denied. You do not have permission to view Clockify Reports.</div>';
         return;
@@ -107,7 +126,7 @@ register_route('clockify_dashboard', function() {
     require __DIR__ . '/views/dashboard.php';
 });
 
-register_route('clockify_weekly_user_projects', function() {
+$pm->registerRoute('clockify_weekly_user_projects', function() {
     if (function_exists('has_permission') && !has_permission('clockify_reports_view_clockify_reports') && !has_permission('view_dashboard')) {
         echo '<div class="alert alert-danger"><i class="fa-solid fa-lock me-2"></i>Access Denied. You do not have permission to view Clockify Reports.</div>';
         return;
@@ -115,7 +134,7 @@ register_route('clockify_weekly_user_projects', function() {
     require __DIR__ . '/views/weekly-user-projects.php';
 });
 
-register_route('clockify_project_summary', function() {
+$pm->registerRoute('clockify_project_summary', function() {
     if (function_exists('has_permission') && !has_permission('clockify_reports_view_clockify_reports') && !has_permission('view_dashboard')) {
         echo '<div class="alert alert-danger"><i class="fa-solid fa-lock me-2"></i>Access Denied. You do not have permission to view Clockify Reports.</div>';
         return;
@@ -123,7 +142,7 @@ register_route('clockify_project_summary', function() {
     require __DIR__ . '/views/project-summary.php';
 });
 
-register_route('clockify_task_details', function() {
+$pm->registerRoute('clockify_task_details', function() {
     if (function_exists('has_permission') && !has_permission('clockify_reports_view_clockify_reports') && !has_permission('view_dashboard')) {
         echo '<div class="alert alert-danger"><i class="fa-solid fa-lock me-2"></i>Access Denied. You do not have permission to view Clockify Reports.</div>';
         return;
@@ -131,7 +150,7 @@ register_route('clockify_task_details', function() {
     require __DIR__ . '/views/project-task-details.php';
 });
 
-register_route('clockify_settings', function() {
+$pm->registerRoute('clockify_settings', function() {
     if (function_exists('has_permission') && !has_permission('clockify_reports_manage_clockify_settings') && !has_permission('manage_settings')) {
         echo '<div class="alert alert-danger"><i class="fa-solid fa-lock me-2"></i>Access Denied. You do not have permission to manage Clockify settings.</div>';
         return;
