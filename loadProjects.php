@@ -4,7 +4,7 @@
  * Clockify Project Import Script
  *
  * Features:
- * - Uses external configuration file
+ * - Uses plugin database settings or external configuration file
  * - Auto-creates missing clients
  * - Supports --dry-run CLI flag
  * - Emits structured JSON logs for audit/change management
@@ -12,19 +12,15 @@
  */
 
 /* =======================
- * Load Configuration
+ * Load Configuration / DB Settings
  * ======================= */
-$configFile = __DIR__ . '/clockify-config.php';
+require_once __DIR__ . '/clockify-lib.php';
 
-if (!file_exists($configFile)) {
-    fwrite(STDERR, "Configuration file not found: clockify-config.php\n");
-    exit(1);
-}
-
-require $configFile;
+$apiKey      = getClockifyApiKey();
+$workspaceId = getClockifyWorkspaceId();
 
 if (empty($apiKey) || empty($workspaceId)) {
-    fwrite(STDERR, "API key or Workspace ID not set in config file\n");
+    fwrite(STDERR, "API key or Workspace ID not set in plugin settings or config file\n");
     exit(1);
 }
 
@@ -36,7 +32,7 @@ $apiBase = 'https://api.clockify.me/api/v1';
 $options = getopt('', ['file:', 'dry-run']);
 
 if (!isset($options['file'])) {
-    fwrite(STDERR, "Usage: php clockify_import.php --file=projects.txt [--dry-run]\n");
+    fwrite(STDERR, "Usage: php loadProjects.php --file=projects.txt [--dry-run]\n");
     exit(1);
 }
 
@@ -226,4 +222,3 @@ logEvent([
     'action' => 'run.complete',
     'mode'   => $dryRun ? 'dry-run' : 'apply',
 ]);
-
