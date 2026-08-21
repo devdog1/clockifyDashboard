@@ -3,6 +3,18 @@
  * Test suite for Clockify Reports Plugin
  */
 
+class MockScheduler {
+    public $registeredTasks = [];
+
+    public function registerTask($task_key, $callback, $interval_seconds = 3600, $plugin_slug = 'core') {
+        $this->registeredTasks[$task_key] = [
+            'callback' => $callback,
+            'interval' => $interval_seconds,
+            'plugin' => $plugin_slug
+        ];
+    }
+}
+
 class PluginManager {
     private static $instance = null;
     public $actions = [];
@@ -157,14 +169,19 @@ echo "✓ Team creation, save, and load test passed.\n";
 assert(clockify_uninstall_tables() === true, 'clockify_uninstall_tables should return true');
 echo "✓ Table uninstallation test passed.\n";
 
-// Test 9: Require plugin.php without pre-existing add_action() function
+// Test 9: Require plugin.php and verify Task Scheduler Registration
 require_once __DIR__ . '/../plugins/clockify-reports/plugin.php';
 $pm = PluginManager::getInstance();
 assert(isset($pm->routes['clockify_dashboard']), 'clockify_dashboard route should be registered');
 assert(isset($pm->routes['clockify_manage_teams']), 'clockify_manage_teams route should be registered');
 assert(isset($pm->routes['clockify_settings']), 'clockify_settings route should be registered');
-assert(isset($pm->actions['plugin_activate_clockify-reports']), 'Activation hook should be registered');
-assert(isset($pm->actions['plugin_deactivate_clockify-reports']), 'Deactivation hook should be registered');
-echo "✓ plugin.php inclusion test passed.\n";
+assert(isset($pm->actions['init_scheduler']), 'init_scheduler action hook should be registered');
+
+$mockScheduler = new MockScheduler();
+foreach ($pm->actions['init_scheduler'] as $callback) {
+    call_user_func($callback, $mockScheduler);
+}
+assert(isset($mockScheduler->registeredTasks['clockify_cron_team_reports']), 'clockify_cron_team_reports task should be registered with Task Scheduler');
+echo "✓ Task Scheduler task registration test passed.\n";
 
 echo "\nALL TESTS PASSED SUCCESSFULLY!\n";

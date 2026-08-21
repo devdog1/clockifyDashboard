@@ -65,6 +65,31 @@ $pm->addAction('plugin_deactivate_clockify_reports', function() {
     }
 });
 
+// Callback function for framework task scheduler
+if (!function_exists('clockify_run_cron_team_reports')) {
+    function clockify_run_cron_team_reports() {
+        $taskFile = __DIR__ . '/tasks/cron-team-reports.php';
+        if (!file_exists($taskFile)) {
+            $taskFile = __DIR__ . '/plugins/clockify-reports/tasks/cron-team-reports.php';
+        }
+        if (file_exists($taskFile)) {
+            require $taskFile;
+        }
+    }
+}
+
+// Register Task Scheduler Hook
+$pm->addAction('init_scheduler', function($scheduler) {
+    if (is_object($scheduler) && method_exists($scheduler, 'registerTask')) {
+        $scheduler->registerTask(
+            'clockify_cron_team_reports',
+            'clockify_run_cron_team_reports',
+            86400,
+            'clockify-reports'
+        );
+    }
+});
+
 function clockify_get_view_path($viewName) {
     if (file_exists(__DIR__ . "/views/{$viewName}.php")) {
         return __DIR__ . "/views/{$viewName}.php";
