@@ -27,11 +27,10 @@ class ClockifyModel {
         if (class_exists('PluginDatabase')) {
             try {
                 $instance = new PluginDatabase('clockify-reports');
-                self::installTables($instance);
                 self::$pdb = $instance;
                 return self::$pdb;
             } catch (Exception $e) {
-                error_log("ClockifyModel getPluginDb error: " . $e->getMessage());
+                // Return false if database connection unavailable
             }
         }
 
@@ -108,7 +107,7 @@ class ClockifyModel {
                     return $row['setting_value'];
                 }
             } catch (Exception $e) {
-                error_log("ClockifyModel getSetting error for {$key}: " . $e->getMessage());
+                // Table might not exist yet before activation
             }
         }
 
@@ -174,7 +173,7 @@ class ClockifyModel {
                     return $teams;
                 }
             } catch (Exception $e) {
-                error_log("ClockifyModel getTeams error: " . $e->getMessage());
+                // Table might not exist yet before activation
             }
         }
 
@@ -230,7 +229,7 @@ class ClockifyModel {
                     }
                 }
             } catch (Exception $e) {
-                error_log("ClockifyModel loadCache error for key {$key}: " . $e->getMessage());
+                // Table might not exist yet before activation
             }
         }
         return false;

@@ -119,8 +119,11 @@ assert(!empty($weeks), 'Fiscal year weeks should not be empty');
 assert(is_array($weeks), 'Fiscal year weeks should be an array');
 echo "✓ getFiscalYearWeeks test passed (" . count($weeks) . " weeks generated).\n";
 
-// Test 3: Table Installation & Setting GET/SET via PluginDatabase
+// Test 3: Explicit Table Installation on Enablement
 assert(clockify_install_tables() === true, 'clockify_install_tables should return true');
+echo "✓ Explicit table installation test passed.\n";
+
+// Test 4: Setting GET/SET via PluginDatabase
 $testKey = 'api_key';
 $testValue = 'test_secret_api_key_123';
 $setResult = clockify_set_setting($testKey, $testValue);
@@ -128,14 +131,14 @@ assert($setResult === true, 'clockify_set_setting should return true');
 
 $retrievedValue = clockify_get_setting($testKey);
 assert($retrievedValue === $testValue, "Retrieved value '{$retrievedValue}' should match '{$testValue}'");
-echo "✓ Table installation and settings test passed.\n";
+echo "✓ Settings GET/SET test passed.\n";
 
-// Test 4: Workspace ID Setting
+// Test 5: Workspace ID Setting
 clockify_set_setting('workspace_id', 'ws_test_456');
 assert(getClockifyWorkspaceId() === 'ws_test_456', 'getClockifyWorkspaceId should return ws_test_456');
 echo "✓ Workspace ID setting test passed.\n";
 
-// Test 5: DB Cache Save & Load
+// Test 6: DB Cache Save & Load
 $cacheKey = 'test_report_cache';
 $sampleData = ['user1' => ['Project A' => 10.5]];
 $saved = saveCache($cacheKey, $sampleData, 3600);
@@ -146,12 +149,12 @@ assert($cachedData !== false, 'loadCache should return cached array');
 assert($cachedData['user1']['Project A'] === 10.5, 'Cached data content should match');
 echo "✓ DB Cache save and load test passed.\n";
 
-// Test 6: DB Cache Clearing
+// Test 7: DB Cache Clearing
 clearClockifyCache();
 assert(loadCache($cacheKey) === false, 'loadCache should return false after clearing cache');
 echo "✓ DB Cache clearing test passed.\n";
 
-// Test 7: Teams Save & Get
+// Test 8: Teams Save & Get
 $sampleTeams = [
     [
         'name' => 'Engineering',
@@ -165,11 +168,11 @@ assert($loadedTeams[0]['name'] === 'Engineering', 'Team name should match');
 assert($loadedTeams[0]['users'] === ['u100', 'u101'], 'Team members should match');
 echo "✓ Team creation, save, and load test passed.\n";
 
-// Test 8: Table Uninstallation
+// Test 9: Table Uninstallation
 assert(clockify_uninstall_tables() === true, 'clockify_uninstall_tables should return true');
 echo "✓ Table uninstallation test passed.\n";
 
-// Test 9: Require plugin.php and verify Task Scheduler Registration
+// Test 10: Require plugin.php and verify Task Scheduler Registration
 require_once __DIR__ . '/../plugins/clockify-reports/plugin.php';
 $pm = PluginManager::getInstance();
 assert(isset($pm->routes['clockify_dashboard']), 'clockify_dashboard route should be registered');
