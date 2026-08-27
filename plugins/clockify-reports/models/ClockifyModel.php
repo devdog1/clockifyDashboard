@@ -1,6 +1,6 @@
 <?php
 /**
- * Clockify Model - Handles DB tables, Settings, Caching, and Team CRUD
+ * Clockify Model - Handles DB tables, Settings, Caching, Team CRUD, and Role/Permission Management
  */
 
 class ClockifyModel {
@@ -38,6 +38,17 @@ class ClockifyModel {
         return self::$pdb;
     }
 
+    public static function getCoreDb() {
+        if (function_exists('get_db_connection')) {
+            try {
+                return get_db_connection();
+            } catch (Exception $e) {
+                error_log("ClockifyModel getCoreDb error: " . $e->getMessage());
+            }
+        }
+        return null;
+    }
+
     public static function installTables($pdb = null) {
         if ($pdb === null) {
             $pdb = self::getPluginDb();
@@ -64,6 +75,16 @@ class ClockifyModel {
                 members TEXT NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ");
+
+            // Ensure is_disabled column exists on roles table
+            $db = self::getCoreDb();
+            if ($db) {
+                try {
+                    $db->exec("ALTER TABLE roles ADD COLUMN is_disabled TINYINT(1) DEFAULT 0");
+                } catch (Exception $e) {
+                    // Column already exists or table un-alterable
+                }
+            }
 
             if (function_exists('log_action')) {
                 log_action('CLOCKIFY_MODEL_INSTALL_TABLES', ['status' => 'success']);
@@ -271,5 +292,177 @@ class ClockifyModel {
             }
         }
         return false;
+    }
+
+    /* =========================================================
+     * ROLE & PERMISSION MANAGEMENT
+     * ========================================================= */
+
+    public static function getAllRoles() {
+        $db = self::getCoreDb();
+        if (!$db) return [];
+
+        try {
+            $stmt = $db->query("SELECT * FROM roles ORDER BY role_name ASC");
+            $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($roles as &$r) {
+                $stmt_p = $db->prepare("
+                    SELECT p.id, p.permission_name, p.description
+                    FROM permissions p
+                    JOIN role_permissions rp ON rp.permission_id = p.id
+                    WHERE rp.role_id = ?
+                    ORDER BY p.permission_name ASC
+                ");
+                $stmt_p->execute([$r['id']]);
+                $r['permissions'] = $stmt_p->fetchAll(PDO::FETCH_ASSOC);
+                $r['permission_ids'] = array_column($r['permissions'], 'id');
+                $r['is_disabled'] = (int)($r['is_disabled'] ?? 0);
+            }
+
+            return $roles;
+        } catch (Exception $e) {
+            error_log("ClockifyModel getAllRoles error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public static function getAllPermissions() {
+        $db = self::getCoreDb();
+        if (!$db) return [];
+
+        try {
+            $stmt = $db->query("SELECT * FROM permissions ORDER BY permission_name ASC");
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("ClockifyModel getAllPermissions error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public static function createRole($roleName, $description = '') {
+        $db = self::getCoreDb();
+        if (!$db) return false;
+
+        $cleanName = strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $roleName)));
+        if (empty($cleanName)) return false;
+
+        try {
+            $stmt = $db->prepare("INSERT INTO roles (role_name, description) VALUES (?, ?)");
+            $stmt->execute([$cleanName, $description]);
+            $roleId = $db->lastInsertId();
+
+            if (function_exists('log_action')) {
+                log_action('CLOCKIFY_ROLE_CREATE', ['role_id' => $roleId, 'role_name' => $cleanName]);
+            }
+            return $roleId;
+        } catch (Exception $e) {
+            error_log("ClockifyModel createRole error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function updateRole($roleId, $roleName, $description, $isDisabled = 0) {
+        $db = self::getCoreDb();
+        if (!$db) return false;
+
+        $cleanName = strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $roleName)));
+        if (empty($cleanName)) return false;
+
+        try {
+            try {
+                $stmt = $db->prepare("UPDATE roles SET role_name = ?, description = ?, is_disabled = ? WHERE id = ?");
+                $stmt->execute([$cleanName, $description, (int)$isDisabled, $roleId]);
+            } catch (Exception $ex) {
+                $stmt = $db->prepare("UPDATE roles SET role_name = ?, description = ? WHERE id = ?");
+                $stmt->execute([$cleanName, $description, $roleId]);
+            }
+
+            if (function_exists('log_action')) {
+                log_action('CLOCKIFY_ROLE_UPDATE', ['role_id' => $roleId, 'role_name' => $cleanName, 'is_disabled' => $isDisabled]);
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log("ClockifyModel updateRole error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function toggleRoleStatus($roleId, $isDisabled) {
+        $db = self::getCoreDb();
+        if (!$db) return false;
+
+        try {
+            try {
+                $db->exec("ALTER TABLE roles ADD COLUMN is_disabled TINYINT(1) DEFAULT 0");
+            } catch (Exception $ex) {}
+
+            $stmt = $db->prepare("UPDATE roles SET is_disabled = ? WHERE id = ?");
+            $stmt->execute([(int)$isDisabled, $roleId]);
+
+            if (function_exists('log_action')) {
+                log_action('CLOCKIFY_ROLE_TOGGLE_STATUS', ['role_id' => $roleId, 'is_disabled' => $isDisabled]);
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log("ClockifyModel toggleRoleStatus error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function updateRolePermissions($roleId, array $permissionIds) {
+        $db = self::getCoreDb();
+        if (!$db) return false;
+
+        try {
+            $stmt = $db->prepare("DELETE FROM role_permissions WHERE role_id = ?");
+            $stmt->execute([$roleId]);
+
+            if (!empty($permissionIds)) {
+                $stmt_check = $db->prepare("SELECT 1 FROM role_permissions WHERE role_id = ? AND permission_id = ?");
+                $stmt_insert = $db->prepare("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)");
+
+                foreach ($permissionIds as $pid) {
+                    $stmt_check->execute([$roleId, (int)$pid]);
+                    if (!$stmt_check->fetch()) {
+                        $stmt_insert->execute([$roleId, (int)$pid]);
+                    }
+                }
+            }
+
+            if (function_exists('log_action')) {
+                log_action('CLOCKIFY_ROLE_PERMISSIONS_UPDATE', ['role_id' => $roleId, 'permission_count' => count($permissionIds)]);
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log("ClockifyModel updateRolePermissions error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function deleteRole($roleId) {
+        $db = self::getCoreDb();
+        if (!$db) return false;
+
+        try {
+            $stmt_check = $db->prepare("SELECT role_name FROM roles WHERE id = ?");
+            $stmt_check->execute([$roleId]);
+            $role = $stmt_check->fetch(PDO::FETCH_ASSOC);
+
+            if ($role && in_array($role['role_name'], ['admin', 'manager', 'user'])) {
+                return false;
+            }
+
+            $stmt = $db->prepare("DELETE FROM roles WHERE id = ?");
+            $stmt->execute([$roleId]);
+
+            if (function_exists('log_action')) {
+                log_action('CLOCKIFY_ROLE_DELETE', ['role_id' => $roleId]);
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log("ClockifyModel deleteRole error: " . $e->getMessage());
+            return false;
+        }
     }
 }

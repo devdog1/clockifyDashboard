@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Clockify Reports
-Description: Workspace reporting dashboard, user weekly hours, project summary, task details, team management, and settings management for Clockify.
+Description: Workspace reporting dashboard, user weekly hours, project summary, task details, team management, role management, and settings management for Clockify.
 Version: 1.0.0
 Author: Clockify Integration Team
 Permissions: view_clockify_reports, manage_clockify_settings
@@ -142,6 +142,12 @@ $pm->addFilter('theme_nav_links', function ($links) {
                 'permission' => 'clockify_reports_manage_clockify_settings'
             ],
             [
+                'route' => 'clockify_manage_roles',
+                'label' => 'Manage Roles',
+                'icon'  => 'fa-solid fa-user-shield',
+                'permission' => 'clockify_reports_manage_clockify_settings'
+            ],
+            [
                 'route' => 'clockify_settings',
                 'label' => 'Clockify Settings',
                 'icon'  => 'fa-solid fa-gear',
@@ -170,10 +176,11 @@ $pm->addAction('index_dashboard_widgets', function ($userContext) {
                         <?= $configured ? 'Configured' : 'Setup Needed' ?>
                     </span>
                 </div>
-                <p class="small text-muted mb-3">Access workspace project summaries, task breakdown details, user weekly hours, and team management.</p>
-                <div class="d-flex gap-2">
+                <p class="small text-muted mb-3">Access workspace project summaries, task breakdown details, user weekly hours, team management, and role permissions.</p>
+                <div class="d-flex gap-2 flex-wrap">
                     <a href="index.php?route=clockify_dashboard" class="btn btn-sm btn-primary">Open Reports</a>
                     <a href="index.php?route=clockify_manage_teams" class="btn btn-sm btn-outline-primary">Teams</a>
+                    <a href="index.php?route=clockify_manage_roles" class="btn btn-sm btn-outline-info">Roles</a>
                     <a href="index.php?route=clockify_settings" class="btn btn-sm btn-outline-secondary">Settings</a>
                 </div>
             </div>
@@ -225,6 +232,15 @@ $pm->registerRoute('clockify_manage_teams', function() {
         return;
     }
     $view = clockify_get_view_path('manage-teams');
+    if ($view) require $view;
+});
+
+$pm->registerRoute('clockify_manage_roles', function() {
+    if (function_exists('has_permission') && !has_permission('clockify_reports_manage_clockify_settings') && !has_permission('manage_settings')) {
+        echo '<div class="alert alert-danger"><i class="fa-solid fa-lock me-2"></i>Access Denied. You do not have permission to manage roles and permissions.</div>';
+        return;
+    }
+    $view = clockify_get_view_path('manage-roles');
     if ($view) require $view;
 });
 

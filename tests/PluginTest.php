@@ -100,8 +100,20 @@ class PluginDatabase {
     }
 }
 
+// Global Core DB mock for SQLite in-memory test
+$globalCoreDb = new PDO('sqlite::memory:');
+$globalCoreDb->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$globalCoreDb->exec("CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY AUTOINCREMENT, role_name TEXT UNIQUE, description TEXT, is_disabled INTEGER DEFAULT 0)");
+$globalCoreDb->exec("CREATE TABLE IF NOT EXISTS permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, permission_name TEXT UNIQUE, description TEXT)");
+$globalCoreDb->exec("CREATE TABLE IF NOT EXISTS role_permissions (role_id INTEGER, permission_id INTEGER, PRIMARY KEY(role_id, permission_id))");
+
+// Seed initial roles and permissions
+$globalCoreDb->exec("INSERT INTO roles (id, role_name, description) VALUES (1, 'admin', 'Administrator'), (2, 'manager', 'Manager')");
+$globalCoreDb->exec("INSERT INTO permissions (id, permission_name, description) VALUES (1, 'view_clockify_reports', 'View Reports'), (2, 'manage_clockify_settings', 'Manage Settings')");
+
 function get_db_connection() {
-    return new PDO('sqlite::memory:');
+    global $globalCoreDb;
+    return $globalCoreDb;
 }
 
 require_once __DIR__ . '/../plugins/clockify-reports/clockify-lib.php';
@@ -119,11 +131,8 @@ assert(!empty($weeks), 'Fiscal year weeks should not be empty');
 assert(is_array($weeks), 'Fiscal year weeks should be an array');
 echo "✓ getFiscalYearWeeks test passed (" . count($weeks) . " weeks generated).\n";
 
-// Test 3: Explicit Table Installation on Enablement
+// Test 3: Table Installation & Setting GET/SET via PluginDatabase
 assert(clockify_install_tables() === true, 'clockify_install_tables should return true');
-echo "✓ Explicit table installation test passed.\n";
-
-// Test 4: Setting GET/SET via PluginDatabase
 $testKey = 'api_key';
 $testValue = 'test_secret_api_key_123';
 $setResult = clockify_set_setting($testKey, $testValue);
@@ -131,14 +140,14 @@ assert($setResult === true, 'clockify_set_setting should return true');
 
 $retrievedValue = clockify_get_setting($testKey);
 assert($retrievedValue === $testValue, "Retrieved value '{$retrievedValue}' should match '{$testValue}'");
-echo "✓ Settings GET/SET test passed.\n";
+echo "✓ Table installation and settings test passed.\n";
 
-// Test 5: Workspace ID Setting
+// Test 4: Workspace ID Setting
 clockify_set_setting('workspace_id', 'ws_test_456');
 assert(getClockifyWorkspaceId() === 'ws_test_456', 'getClockifyWorkspaceId should return ws_test_456');
 echo "✓ Workspace ID setting test passed.\n";
 
-// Test 6: DB Cache Save & Load
+// Test 5: DB Cache Save & Load
 $cacheKey = 'test_report_cache';
 $sampleData = ['user1' => ['Project A' => 10.5]];
 $saved = saveCache($cacheKey, $sampleData, 3600);
@@ -149,12 +158,12 @@ assert($cachedData !== false, 'loadCache should return cached array');
 assert($cachedData['user1']['Project A'] === 10.5, 'Cached data content should match');
 echo "✓ DB Cache save and load test passed.\n";
 
-// Test 7: DB Cache Clearing
+// Test 6: DB Cache Clearing
 clearClockifyCache();
 assert(loadCache($cacheKey) === false, 'loadCache should return false after clearing cache');
 echo "✓ DB Cache clearing test passed.\n";
 
-// Test 8: Teams Save & Get
+// Test 7: Teams Save & Get
 $sampleTeams = [
     [
         'name' => 'Engineering',
@@ -168,6 +177,34 @@ assert($loadedTeams[0]['name'] === 'Engineering', 'Team name should match');
 assert($loadedTeams[0]['users'] === ['u100', 'u101'], 'Team members should match');
 echo "✓ Team creation, save, and load test passed.\n";
 
+// Test 8: Role Creation, Permission Assignment, Status Toggling
+$newRoleId = ClockifyModel::createRole('analyst', 'Data Analyst Role');
+assert($newRoleId > 0, 'createRole should return valid role ID');
+
+$assignSuccess = ClockifyModel::updateRolePermissions($newRoleId, [1, 2]);
+assert($assignSuccess === true, 'updateRolePermissions should return true');
+
+$roles = ClockifyModel::getAllRoles();
+$analystRole = null;
+foreach ($roles as $r) {
+    if ($r['role_name'] === 'analyst') {
+        $analystRole = $r;
+        break;
+    }
+}
+assert($analystRole !== null, 'Analyst role should exist');
+assert(count($analystRole['permission_ids']) === 2, 'Analyst role should have 2 permission IDs');
+
+// Test toggle status
+ClockifyModel::toggleRoleStatus($newRoleId, 1);
+$rolesUpdated = ClockifyModel::getAllRoles();
+foreach ($rolesUpdated as $r) {
+    if ($r['role_name'] === 'analyst') {
+        assert($r['is_disabled'] === 1, 'Role status should be disabled (1)');
+    }
+}
+echo "✓ Role CRUD, permission assignment, and status toggling test passed.\n";
+
 // Test 9: Table Uninstallation
 assert(clockify_uninstall_tables() === true, 'clockify_uninstall_tables should return true');
 echo "✓ Table uninstallation test passed.\n";
@@ -177,6 +214,7 @@ require_once __DIR__ . '/../plugins/clockify-reports/plugin.php';
 $pm = PluginManager::getInstance();
 assert(isset($pm->routes['clockify_dashboard']), 'clockify_dashboard route should be registered');
 assert(isset($pm->routes['clockify_manage_teams']), 'clockify_manage_teams route should be registered');
+assert(isset($pm->routes['clockify_manage_roles']), 'clockify_manage_roles route should be registered');
 assert(isset($pm->routes['clockify_settings']), 'clockify_settings route should be registered');
 assert(isset($pm->actions['init_scheduler']), 'init_scheduler action hook should be registered');
 
