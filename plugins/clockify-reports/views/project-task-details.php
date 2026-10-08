@@ -45,13 +45,16 @@ if (!function_exists('clockify_get_users_list')) {
 }
 
 if (!function_exists('clockify_get_project_entries')) {
-    function clockify_get_project_entries($workspaceId, $projectId, $users) {
+    function clockify_get_project_entries($workspaceId, $projectId, $users, $startISO = null, $endISO = null) {
         $entries = [];
         foreach ($users as $userId => $userName) {
             $page = 1;
             while (true) {
                 $url = "https://api.clockify.me/api/v1/workspaces/$workspaceId/user/$userId/time-entries" .
                        "?project=$projectId&page=$page&page-size=500";
+                if (!empty($startISO) && !empty($endISO)) {
+                    $url .= "&start=$startISO&end=$endISO";
+                }
                 $data = clockifyGet($url);
                 if (!is_array($data) || empty($data)) break;
 
@@ -76,6 +79,19 @@ if (!function_exists('clockify_get_project_entries')) {
     }
 }
 
+$fyOptions = getPastFiscalYears();
+$selectedFy = $_GET['fy'] ?? array_key_first($fyOptions);
+if ($selectedFy !== 'all' && !array_key_exists($selectedFy, $fyOptions)) {
+    $selectedFy = array_key_first($fyOptions);
+}
+
+$startISO = null;
+$endISO = null;
+if ($selectedFy !== 'all' && isset($fyOptions[$selectedFy])) {
+    $startISO = $fyOptions[$selectedFy]['start']->format("Y-m-d\TH:i:s\Z");
+    $endISO   = $fyOptions[$selectedFy]['end']->format("Y-m-d\TH:i:s\Z");
+}
+
 $projects = clockify_get_projects_list($workspaceId);
 $users    = clockify_get_users_list($workspaceId);
 
@@ -84,7 +100,7 @@ $selectedName = $projectId && isset($projects[$projectId]) ? $projects[$projectI
 
 $entries = [];
 if ($projectId) {
-    $entries = clockify_get_project_entries($workspaceId, $projectId, $users);
+    $entries = clockify_get_project_entries($workspaceId, $projectId, $users, $startISO, $endISO);
 }
 ?>
 
@@ -98,13 +114,26 @@ if ($projectId) {
 
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white fw-bold">
-            <i class="fa-solid fa-folder-open me-2"></i>Select a Project
+            <i class="fa-solid fa-folder-open me-2"></i>Select Project & Financial Year
         </div>
         <div class="card-body">
             <form method="GET" action="index.php" class="row g-3" id="projectForm">
                 <input type="hidden" name="route" value="clockify_task_details">
 
-                <div class="col-md-9">
+                <div class="col-md-5">
+                    <label for="fySelect" class="form-label fw-bold">Financial Year:</label>
+                    <select name="fy" id="fySelect" class="form-select">
+                        <option value="all" <?= $selectedFy === 'all' ? 'selected' : '' ?>>All Time</option>
+                        <?php foreach ($fyOptions as $key => $fyData): ?>
+                            <option value="<?= $key ?>" <?= $key == $selectedFy ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($fyData['label']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="col-md-5">
+                    <label for="projectSelect" class="form-label fw-bold">Project:</label>
                     <select name="project_id" id="projectSelect" class="form-select">
                         <option value="">-- Choose a Project --</option>
                         <?php foreach ($projects as $pid => $pname): ?>
@@ -115,9 +144,9 @@ if ($projectId) {
                     </select>
                 </div>
 
-                <div class="col-md-3">
+                <div class="col-md-2 align-self-end">
                     <button type="submit" class="btn btn-primary w-100">
-                        <i class="fa-solid fa-magnifying-glass me-1"></i> Load Task Details
+                        <i class="fa-solid fa-magnifying-glass me-1"></i> Load Tasks
                     </button>
                 </div>
             </form>
@@ -127,8 +156,13 @@ if ($projectId) {
     <?php if ($projectId && $selectedName): ?>
         <div class="card shadow-sm">
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                <strong><i class="fa-solid fa-folder me-2 text-info"></i>Project: <?= htmlspecialchars($selectedName) ?></strong>
-                <span class="badge bg-secondary"><?= count($entries) ?> time entries</span>
+                <strong>
+                    <i class="fa-solid fa-folder me-2 text-info"></i>Project: <?= htmlspecialchars($selectedName) ?>
+                    <span class="badge bg-secondary ms-2">
+                        <?= $selectedFy === 'all' ? 'All Time' : htmlspecialchars($fyOptions[$selectedFy]['label'] ?? $selectedFy) ?>
+                    </span>
+                </strong>
+                <span class="badge bg-info text-dark"><?= count($entries) ?> time entries</span>
             </div>
 
             <div class="card-body p-0">

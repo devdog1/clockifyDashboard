@@ -56,11 +56,29 @@ assert(clockifyDurationToHours('PT1H30M') == 1.5, 'Duration PT1H30M should be 1.
 assert(clockifyDurationToHours('PT3600S') == 1.0, 'Duration PT3600S should be 1.0');
 echo "✓ clockifyDurationToHours test passed.\n";
 
-// Test 2: Fiscal Year Weeks
+// Test 2: Past Fiscal Years and Boundaries
+$pastFys = getPastFiscalYears(5);
+assert(count($pastFys) === 5, 'getPastFiscalYears(5) should return 5 years');
+$firstFyKey = array_key_first($pastFys);
+assert(!empty($pastFys[$firstFyKey]['label']), 'FY label should not be empty');
+assert($pastFys[$firstFyKey]['is_current'] === true, 'First FY should be current');
+
+$boundaries = getFiscalYearBoundaries($firstFyKey);
+assert($boundaries['start'] instanceof DateTime, 'Boundary start should be DateTime');
+assert($boundaries['end'] instanceof DateTime, 'Boundary end should be DateTime');
+echo "✓ getPastFiscalYears and getFiscalYearBoundaries tests passed.\n";
+
+// Test 3: Fiscal Year Weeks with Selection
 $weeks = getFiscalYearWeeks();
 assert(!empty($weeks), 'Fiscal year weeks should not be empty');
 assert(is_array($weeks), 'Fiscal year weeks should be an array');
-echo "✓ getFiscalYearWeeks test passed (" . count($weeks) . " weeks generated).\n";
+
+$pastFyKeys = array_keys($pastFys);
+$pastFyKey = $pastFyKeys[1]; // Previous FY
+$pastWeeks = getFiscalYearWeeks($pastFyKey);
+assert(!empty($pastWeeks), 'Past fiscal year weeks should not be empty');
+assert(is_array($pastWeeks), 'Past fiscal year weeks should be an array');
+echo "✓ getFiscalYearWeeks test passed (" . count($weeks) . " weeks generated for current FY, " . count($pastWeeks) . " for past FY).\n";
 
 // Test 3: Setting GET/SET via PluginDatabase
 $testKey = 'api_key';

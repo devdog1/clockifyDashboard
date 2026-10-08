@@ -15,7 +15,13 @@ if (empty($apiKey) || empty($workspaceId)) {
     return;
 }
 
-$weekOptions = getFiscalYearWeeks();
+$fyOptions = getPastFiscalYears();
+$selectedFy = $_GET['fy'] ?? array_key_first($fyOptions);
+if (!array_key_exists($selectedFy, $fyOptions)) {
+    $selectedFy = array_key_first($fyOptions);
+}
+
+$weekOptions = getFiscalYearWeeks($selectedFy);
 
 $selectedWeek = $_GET["week"] ?? array_key_first($weekOptions);
 if (!array_key_exists($selectedWeek, $weekOptions)) {
@@ -25,8 +31,8 @@ if (!array_key_exists($selectedWeek, $weekOptions)) {
 $weekStart = $weekOptions[$selectedWeek]["start"];
 $weekEnd   = $weekOptions[$selectedWeek]["end"];
 
-$cacheFile = "$cacheDir/clockify_project_summary_{$selectedWeek}.json";
-$fyCacheFile = "$cacheDir/clockify_project_fy_summary.json";
+$cacheFile = "$cacheDir/clockify_project_summary_{$selectedFy}_{$selectedWeek}.json";
+$fyCacheFile = "$cacheDir/clockify_project_fy_summary_{$selectedFy}.json";
 
 $cachedWeekly = loadCache($cacheFile, $cacheTTL);
 $cachedFY     = loadCache($fyCacheFile, $cacheTTL);
@@ -41,9 +47,9 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     $startISO = $weekStart->format("Y-m-d\TH:i:s\Z");
     $endISO   = $weekEnd->format("Y-m-d\TH:i:s\Z");
 
-    $fiscalYearStart = reset($weekOptions)["start"];
+    $fiscalYearStart = $fyOptions[$selectedFy]["start"];
     $fyStartISO = $fiscalYearStart->format("Y-m-d\TH:i:s\Z");
-    $fyEndISO   = end($weekOptions)["end"]->format("Y-m-d\TH:i:s\Z");
+    $fyEndISO   = $fyOptions[$selectedFy]["end"]->format("Y-m-d\TH:i:s\Z");
 
     $users = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/users");
     $projects = clockifyGet("https://api.clockify.me/api/v1/workspaces/$workspaceId/projects?archived=false&page-size=500");
@@ -107,7 +113,17 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     <form method="GET" action="index.php" class="row g-3 mb-4 bg-white p-3 rounded border shadow-sm">
         <input type="hidden" name="route" value="clockify_project_summary">
         <div class="col-auto">
-            <label for="week" class="form-label fw-bold">Select Week (Fiscal Year):</label>
+            <label for="fy" class="form-label fw-bold">Financial Year:</label>
+            <select name="fy" id="fy" class="form-select" onchange="this.form.submit()">
+                <?php foreach ($fyOptions as $key => $fyData): ?>
+                    <option value="<?= $key ?>" <?= $key == $selectedFy ? "selected" : "" ?>>
+                        <?= htmlspecialchars($fyData["label"]) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="week" class="form-label fw-bold">Select Week:</label>
             <select name="week" id="week" class="form-select">
                 <?php foreach ($weekOptions as $val => $data): ?>
                     <option value="<?= $val ?>" <?= $val === $selectedWeek ? "selected" : "" ?>>
@@ -122,6 +138,7 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
     </form>
 
     <div class="alert alert-info">
+        <strong><i class="fa-solid fa-calendar me-1"></i>Financial Year:</strong> <?= htmlspecialchars($fyOptions[$selectedFy]['label']) ?> &nbsp;|&nbsp;
         <strong><i class="fa-solid fa-calendar-day me-1"></i>Week Start:</strong> <?= $weekStart->format("Y-m-d") ?> &nbsp;|&nbsp;
         <strong><i class="fa-solid fa-calendar-day me-1"></i>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?>
     </div>
@@ -160,7 +177,7 @@ if ($cachedWeekly !== false && $cachedFY !== false) {
         <div class="col-md-6 mb-4">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0"><i class="fa-solid fa-chart-pie me-2"></i>Fiscal Year Summary (FYTD)</h5>
+                    <h5 class="mb-0"><i class="fa-solid fa-chart-pie me-2"></i>Fiscal Year Summary (<?= htmlspecialchars($fyOptions[$selectedFy]['label']) ?>)</h5>
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-bordered table-striped table-hover mb-0">

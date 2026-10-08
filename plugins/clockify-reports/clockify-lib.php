@@ -176,14 +176,66 @@ if (!function_exists('logCache')) {
     }
 }
 
-if (!function_exists('getFiscalYearWeeks')) {
-    function getFiscalYearWeeks() {
+if (!function_exists('getPastFiscalYears')) {
+    function getPastFiscalYears($numYears = 5) {
         $today = new DateTime("now", new DateTimeZone("UTC"));
         $currentYear = (int)$today->format("Y");
+        $currentFyStartYear = ($today->format('m') >= 9) ? $currentYear : $currentYear - 1;
 
-        $fiscalYearStart = new DateTime("Sept 1 " . ($today->format('m') >= 9 ? $currentYear : $currentYear - 1));
-        $fiscalYearEnd = clone $fiscalYearStart;
-        $fiscalYearEnd->modify("+1 year -1 day");
+        $years = [];
+        for ($i = 0; $i < $numYears; $i++) {
+            $startYear = $currentFyStartYear - $i;
+            $endYear = $startYear + 1;
+            $key = (string)$startYear;
+            $label = sprintf("FY %d-%d%s", $startYear, $endYear, $i === 0 ? " (Current)" : "");
+
+            $startDate = new DateTime("Sept 1 {$startYear}", new DateTimeZone("UTC"));
+            $endDate = new DateTime("Aug 31 {$endYear} 23:59:59", new DateTimeZone("UTC"));
+
+            $years[$key] = [
+                'key' => $key,
+                'start_year' => $startYear,
+                'end_year' => $endYear,
+                'label' => $label,
+                'start' => $startDate,
+                'end' => $endDate,
+                'is_current' => ($i === 0)
+            ];
+        }
+        return $years;
+    }
+}
+
+if (!function_exists('getFiscalYearBoundaries')) {
+    function getFiscalYearBoundaries($selectedFy = null) {
+        $pastFy = getPastFiscalYears();
+        if ($selectedFy !== null && isset($pastFy[$selectedFy])) {
+            return [
+                'start' => clone $pastFy[$selectedFy]['start'],
+                'end'   => clone $pastFy[$selectedFy]['end'],
+            ];
+        }
+
+        $today = new DateTime("now", new DateTimeZone("UTC"));
+        $currentYear = (int)$today->format("Y");
+        $startYear = ($today->format('m') >= 9) ? $currentYear : $currentYear - 1;
+        $endYear = $startYear + 1;
+
+        $fiscalYearStart = new DateTime("Sept 1 {$startYear}", new DateTimeZone("UTC"));
+        $fiscalYearEnd = new DateTime("Aug 31 {$endYear} 23:59:59", new DateTimeZone("UTC"));
+
+        return [
+            'start' => $fiscalYearStart,
+            'end'   => $fiscalYearEnd,
+        ];
+    }
+}
+
+if (!function_exists('getFiscalYearWeeks')) {
+    function getFiscalYearWeeks($selectedFy = null) {
+        $boundaries = getFiscalYearBoundaries($selectedFy);
+        $fiscalYearStart = $boundaries['start'];
+        $fiscalYearEnd   = $boundaries['end'];
 
         $weekOptions = [];
         $weekStart = clone $fiscalYearStart;
