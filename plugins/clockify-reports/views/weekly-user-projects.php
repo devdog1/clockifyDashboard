@@ -15,7 +15,13 @@ if (empty($apiKey) || empty($workspaceId)) {
     return;
 }
 
-$weekOptions = getFiscalYearWeeks();
+$fyOptions = getPastFiscalYears();
+$selectedFy = $_GET['fy'] ?? array_key_first($fyOptions);
+if (!array_key_exists($selectedFy, $fyOptions)) {
+    $selectedFy = array_key_first($fyOptions);
+}
+
+$weekOptions = getFiscalYearWeeks($selectedFy);
 
 $selectedWeek = $_GET['week'] ?? array_key_first($weekOptions);
 if (!array_key_exists($selectedWeek, $weekOptions)) {
@@ -25,7 +31,7 @@ if (!array_key_exists($selectedWeek, $weekOptions)) {
 $weekStart = $weekOptions[$selectedWeek]["start"];
 $weekEnd   = $weekOptions[$selectedWeek]["end"];
 
-$cacheFile = "$cacheDir/clockify_week_{$selectedWeek}.json";
+$cacheFile = "$cacheDir/clockify_week_{$selectedFy}_{$selectedWeek}.json";
 
 $cachedData = loadCache($cacheFile, $cacheTTL);
 if ($cachedData !== false) {
@@ -91,7 +97,15 @@ if ($cachedData !== false) {
     <form method="GET" action="index.php" class="row g-3 mb-4 bg-white p-3 rounded border shadow-sm">
         <input type="hidden" name="route" value="clockify_weekly_user_projects">
         <div class="col-auto">
-            <label for="week" class="form-label fw-bold">Select Week (Fiscal Year):</label>
+            <label for="fy" class="form-label fw-bold">Financial Year:</label>
+            <select name="fy" id="fy" class="form-select" onchange="this.form.submit()">
+                <?php foreach ($fyOptions as $key => $fyData): ?>
+                    <option value="<?= $key ?>" <?= $key == $selectedFy ? "selected" : "" ?>><?= htmlspecialchars($fyData['label']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="week" class="form-label fw-bold">Select Week:</label>
             <select name="week" id="week" class="form-select">
                 <?php foreach ($weekOptions as $val => $data): ?>
                     <option value="<?= $val ?>" <?= $val == $selectedWeek ? "selected" : "" ?>><?= htmlspecialchars($data['label']) ?></option>
@@ -104,6 +118,7 @@ if ($cachedData !== false) {
     </form>
 
     <div class="alert alert-info">
+        <strong><i class="fa-solid fa-calendar me-1"></i>Financial Year:</strong> <?= htmlspecialchars($fyOptions[$selectedFy]['label']) ?> &nbsp;|&nbsp;
         <strong><i class="fa-solid fa-calendar-day me-1"></i>Week Start:</strong> <?= $weekStart->format("Y-m-d") ?> &nbsp;|&nbsp;
         <strong><i class="fa-solid fa-calendar-day me-1"></i>Week End:</strong> <?= $weekEnd->format("Y-m-d") ?>
     </div>
